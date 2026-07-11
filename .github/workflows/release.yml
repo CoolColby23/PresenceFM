@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Test
+        run: swift test
+      - name: Package unsigned app
+        env:
+          PRESENCEFM_VERSION: ${{ github.ref_name }}
+          PRESENCEFM_BUILD_NUMBER: ${{ github.run_number }}
+          PRESENCEFM_DISCORD_APPLICATION_ID: ${{ secrets.PRESENCEFM_DISCORD_APPLICATION_ID }}
+        run: |
+          test -n "$PRESENCEFM_DISCORD_APPLICATION_ID"
+          PRESENCEFM_VERSION="${PRESENCEFM_VERSION#v}" ./scripts/package-app.sh
+          ditto -c -k --keepParent PresenceFM.app "PresenceFM-${PRESENCEFM_VERSION}.zip"
+          shasum -a 256 "PresenceFM-${PRESENCEFM_VERSION}.zip" > "PresenceFM-${PRESENCEFM_VERSION}.sha256"
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            PresenceFM-*.zip
+            PresenceFM-*.sha256
