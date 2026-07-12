@@ -67,15 +67,13 @@ a {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
 }
 
 .brand img {
-  width: 28px;
-  height: 28px;
+  display: block;
+  width: auto;
+  height: 36px;
+  max-width: 220px;
 }
 
 .site-header nav {
@@ -373,9 +371,11 @@ section {
   border: 1px solid var(--line);
 }
 
-.feature-icon img {
-  width: 28px;
-  height: 28px;
+.feature-icon img,
+.feature-icon svg {
+  display: block;
+  width: 30px;
+  height: 30px;
 }
 
 .feature-icon.music {
