@@ -31,4 +31,18 @@ plutil -insert NSHumanReadableCopyright -string "PresenceFM contributors" "$CONT
 
 plutil -insert PRESENCEFM_DISCORD_APPLICATION_ID -string "$DISCORD_APPLICATION_ID" "$CONTENTS/Info.plist"
 
+if [[ "${PRESENCEFM_SKIP_SIGNING:-0}" != "1" ]]; then
+  SIGNING_IDENTITY="${PRESENCEFM_SIGNING_IDENTITY:-}"
+  if [[ -z "$SIGNING_IDENTITY" ]]; then
+    SIGNING_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -n 1)"
+  fi
+  if [[ -n "$SIGNING_IDENTITY" ]]; then
+    codesign --force --options runtime --timestamp=none \
+      --entitlements "$ROOT/Distribution.entitlements" \
+      --sign "$SIGNING_IDENTITY" "$APP"
+    codesign --verify --deep --strict --verbose=2 "$APP"
+    echo "Signed with $SIGNING_IDENTITY"
+  fi
+fi
+
 echo "Created $APP"

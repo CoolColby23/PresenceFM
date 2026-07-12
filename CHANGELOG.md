@@ -19,6 +19,7 @@
 - Made artwork transitions clear stale covers immediately, retry Apple Music artwork, and fall back to Apple-hosted catalog artwork.
 - Added dynamic album artwork to Discord Rich Presence with the PresenceFM mark as an immediate fallback.
 - Prevented background Keychain reads from displaying password prompts or blocking playback after an unsigned development build changes identity.
+- Made local packaging use an available Apple Development identity so repeated development builds keep a stable Keychain identity.
 
 ## 0.1.0
 
