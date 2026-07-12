@@ -135,18 +135,60 @@ struct ArtworkTests {
     }
 }
 
+@Suite("Discord presence")
+struct DiscordPresenceTests {
+    @Test func externalArtworkURLIsSentAsLargeImage() throws {
+        let artworkURL = try #require(URL(string: "https://example.com/album.jpg"))
+        let presence = DiscordPresence(
+            title: "Track", state: "Artist • Album", startedAt: nil,
+            appleMusicURL: nil, artworkURL: artworkURL, buttonLabel: "Listen"
+        )
+        let payload = DiscordPresenceClient.activityPayload(for: presence)
+        let assets = try #require(payload["assets"] as? [String: String])
+        #expect(assets["large_image"] == artworkURL.absoluteString)
+        #expect(assets["large_text"] == "Apple Music album artwork")
+    }
+
+    @Test func bundledAssetIsUsedUntilArtworkArrives() throws {
+        let presence = DiscordPresence(
+            title: "Track", state: "Artist", startedAt: nil,
+            appleMusicURL: nil, artworkURL: nil, buttonLabel: "Listen"
+        )
+        let payload = DiscordPresenceClient.activityPayload(for: presence)
+        let assets = try #require(payload["assets"] as? [String: String])
+        #expect(assets["large_image"] == "presencefm")
+    }
+}
+
 @MainActor
 @Suite("Preferences and notifications")
 struct PreferencesAndNotificationTests {
+    @Test func enabledIntegrationsStartInConnectingState() throws {
+        let name = "PresenceFMTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set(true, forKey: "discordEnabled")
+        defaults.set(true, forKey: "lastFMEnabled")
+        let model = AppModel(
+            store: try PersistenceStore(inMemory: true),
+            preferences: Preferences(defaults: defaults),
+            notifications: NotificationCoordinator(delivery: FakeNotificationDelivery())
+        )
+        #expect(model.discordStatus == .connecting)
+        #expect(model.lastFMStatus == .connecting)
+    }
+
     @Test func preferencesPersistAndRemainObservableState() {
         let name = "PresenceFMTests.\(UUID())"
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let preferences = Preferences(defaults: defaults)
         preferences.showAlbum = false
+        preferences.discordApplicationID = "public-id"
         preferences.privateUntil = Date(timeIntervalSince1970: 123)
         let reloaded = Preferences(defaults: defaults)
         #expect(!reloaded.showAlbum)
+        #expect(reloaded.discordApplicationID == "public-id")
         #expect(reloaded.privateUntil == Date(timeIntervalSince1970: 123))
     }
 

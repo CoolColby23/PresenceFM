@@ -17,7 +17,7 @@ actor ArtworkService {
         self.directory = directory ?? FileManager.default.temporaryDirectory.appendingPathComponent("PresenceFM-Artwork", isDirectory: true)
     }
 
-    func artwork(for track: TrackMetadata) -> Data? {
+    func artwork(for track: TrackMetadata) async -> Data? {
         let key = cacheKey(for: track.identity)
         if let data = memory[key] {
             touch(key)
@@ -28,7 +28,15 @@ actor ArtworkService {
             insert(data, key: key)
             return data
         }
-        guard let data = Self.readCurrentMusicArtwork(), Self.isImage(data) else { return nil }
+        var currentArtwork: Data?
+        for attempt in 0..<4 {
+            if let data = Self.readCurrentMusicArtwork(expectedPersistentID: track.identity.persistentID), Self.isImage(data) {
+                currentArtwork = data
+                break
+            }
+            if attempt < 3 { try? await Task.sleep(for: .milliseconds(150)) }
+        }
+        guard let data = currentArtwork else { return nil }
         insert(data, key: key)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
@@ -96,6 +104,19 @@ actor ArtworkService {
         }
     }
 
+    func downloadedArtwork(from url: URL, for identity: TrackIdentity) async -> Data? {
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 8
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  data.count <= 12_000_000, Self.isImage(data) else { return nil }
+            return cache(data, for: identity) ? data : nil
+        } catch {
+            return nil
+        }
+    }
+
     private func insert(_ data: Data, key: String) {
         memory[key] = data
         touch(key)
@@ -130,11 +151,12 @@ actor ArtworkService {
 
     static func isImage(_ data: Data) -> Bool { NSImage(data: data) != nil }
 
-    nonisolated private static func readCurrentMusicArtwork() -> Data? {
+    nonisolated private static func readCurrentMusicArtwork(expectedPersistentID: String) -> Data? {
         let script = """
         tell application "Music"
           if player state is stopped then return missing value
           try
+            if (persistent ID of current track as text) is not "(expectedPersistentID.appleScriptEscaped)" then return missing value
             return data of artwork 1 of current track
           on error
             return missing value
@@ -143,6 +165,12 @@ actor ArtworkService {
         """
         var error: NSDictionary?
         return NSAppleScript(source: script)?.executeAndReturnError(&error).data
+    }
+}
+
+private extension String {
+    var appleScriptEscaped: String {
+        replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
     }
 }
 

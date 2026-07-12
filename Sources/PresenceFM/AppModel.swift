@@ -26,10 +26,11 @@ final class AppModel {
     @ObservationIgnored private let tracker = PlaybackSessionTracker()
     @ObservationIgnored private let artwork = ArtworkService()
     @ObservationIgnored private let notifications: NotificationCoordinator
-    @ObservationIgnored private lazy var discord = DiscordPresenceClient(keychain: keychain)
+    @ObservationIgnored private lazy var discord = DiscordPresenceClient(applicationID: preferences.discordApplicationID)
     @ObservationIgnored private lazy var lastFM = LastFMClient(keychain: keychain)
     @ObservationIgnored private lazy var queue = ScrobbleQueue(store: store, client: lastFM)
     @ObservationIgnored private var monitoringTask: Task<Void, Never>?
+    @ObservationIgnored private var artworkTask: Task<Void, Never>?
     @ObservationIgnored private var privacyTask: Task<Void, Never>?
     @ObservationIgnored private var sectionObserver: NSObjectProtocol?
     @ObservationIgnored private var started = false
@@ -43,6 +44,8 @@ final class AppModel {
         self.preferences = preferences
         self.notifications = notifications
         onboardingPresented = !preferences.onboardingComplete
+        discordStatus = preferences.discordEnabled ? .connecting : .disabled
+        lastFMStatus = preferences.lastFMEnabled ? .connecting : .disabled
         schedulePrivacyExpiration()
         sectionObserver = NotificationCenter.default.addObserver(
             forName: .presenceFMOpenSection,
@@ -72,11 +75,19 @@ final class AppModel {
         monitoringTask = Task {
             let stream = await monitor.snapshots()
             for await value in stream {
+                let changedTrack = snapshot.track?.identity != value.track?.identity
                 snapshot = value
+                if changedTrack {
+                    artworkTask?.cancel()
+                    artworkData = nil
+                    discordArtworkURL = nil
+                }
                 musicStatus = value.confidence == .low ? .awaitingPermission : .connected
                 await handle(await tracker.ingest(value))
-                await updateArtwork(for: value.track)
+                // Publish the new metadata immediately. Artwork is allowed to arrive in a
+                // second update so a catalog lookup never delays the song transition.
                 await updateDiscord()
+                if changedTrack { await updateArtwork(for: value.track) }
                 await updateOperationalNotifications()
             }
         }
@@ -87,6 +98,7 @@ final class AppModel {
         guard started else { return }
         started = false
         monitoringTask?.cancel()
+        artworkTask?.cancel()
         queue.stop()
         privacyTask?.cancel()
         Task {
@@ -110,7 +122,8 @@ final class AppModel {
 
     func saveCredentials() async {
         do {
-            try await keychain.set(credentialDraft.discordApplicationID, for: .discordApplicationID)
+            preferences.discordApplicationID = credentialDraft.discordApplicationID
+            await discord.setApplicationID(credentialDraft.discordApplicationID)
             try await keychain.set(credentialDraft.lastFMAPIKey, for: .lastFMAPIKey)
             try await keychain.set(credentialDraft.lastFMSecret, for: .lastFMSecret)
             store.log("security", "Credentials updated")
@@ -155,11 +168,11 @@ final class AppModel {
     }
 
     private func loadCredentials() async {
-        credentialDraft.discordApplicationID = await keychain.value(for: .discordApplicationID) ?? ""
+        credentialDraft.discordApplicationID = preferences.discordApplicationID
         credentialDraft.lastFMAPIKey = await keychain.value(for: .lastFMAPIKey) ?? ""
         lastFMUsername = await keychain.value(for: .lastFMUsername) ?? ""
         discordStatus = (credentialDraft.discordApplicationID.isEmpty && !ReleaseConfiguration.hasDiscordConfiguration) ? .disabled : .connecting
-        lastFMStatus = lastFMUsername.isEmpty ? .disabled : .connected
+        lastFMStatus = preferences.lastFMEnabled ? (lastFMUsername.isEmpty ? .authorizationExpired : .connected) : .disabled
     }
 
     private func handle(_ events: [PlaybackSessionTracker.Event]) async {
@@ -168,8 +181,11 @@ final class AppModel {
             case .started(let session):
                 activeSession = session
                 if preferences.lastFMEnabled && preferences.sendNowPlaying && !isPrivate {
-                    do { try await lastFM.updateNowPlaying(session); lastFMStatus = .connected }
-                    catch { updateLastFMStatus(for: error) }
+                    Task { [weak self] in
+                        guard let self else { return }
+                        do { try await self.lastFM.updateNowPlaying(session); self.lastFMStatus = .connected }
+                        catch { self.updateLastFMStatus(for: error) }
+                    }
                 }
             case .updated(let session): activeSession = session
             case .eligible(let session): activeSession = session; if preferences.lastFMEnabled && !isPrivate { queue.enqueue(session) }
@@ -241,13 +257,28 @@ final class AppModel {
     }
 
     private func updateArtwork(for track: TrackMetadata?) async {
-        guard let track else { artworkData = nil; discordArtworkURL = nil; return }
+        guard let track else {
+            artworkTask?.cancel(); artworkData = nil; discordArtworkURL = nil
+            return
+        }
         let identity = track.identity
         let data = await artwork.artwork(for: track)
-        let publicURL = await artwork.publicArtworkURL(for: track)
         guard snapshot.track?.identity == identity else { return }
         artworkData = data
-        discordArtworkURL = publicURL
+        artworkTask = Task { [weak self] in
+            guard let self else { return }
+            let publicURL = await self.artwork.publicArtworkURL(for: track)
+            let downloadedData: Data?
+            if data == nil, let publicURL {
+                downloadedData = await self.artwork.downloadedArtwork(from: publicURL, for: identity)
+            } else {
+                downloadedData = nil
+            }
+            guard !Task.isCancelled, self.snapshot.track?.identity == identity else { return }
+            if let downloadedData { self.artworkData = downloadedData }
+            self.discordArtworkURL = publicURL
+            await self.updateDiscord()
+        }
     }
 
     private func schedulePrivacyExpiration() {
@@ -315,6 +346,7 @@ final class Preferences {
     var discordButtonLabel: String { didSet { defaults.set(discordButtonLabel, forKey: "discordButtonLabel") } }
     var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: "launchAtLogin") } }
     var historyRetentionDays: Int { didSet { defaults.set(historyRetentionDays, forKey: "historyRetentionDays") } }
+    var discordApplicationID: String { didSet { defaults.set(discordApplicationID, forKey: "discordApplicationID") } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -332,6 +364,7 @@ final class Preferences {
         discordButtonLabel = defaults.string(forKey: "discordButtonLabel") ?? "Listen on Apple Music"
         launchAtLogin = defaults.bool(forKey: "launchAtLogin")
         historyRetentionDays = defaults.object(forKey: "historyRetentionDays") as? Int ?? 365
+        discordApplicationID = defaults.string(forKey: "discordApplicationID") ?? ""
     }
 }
 

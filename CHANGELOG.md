@@ -15,6 +15,10 @@
 - Added direct recovery actions for Automation permission, Discord reconnection, Last.fm reauthorization, and queue retries.
 - Added a responsive, dependency-free project website and canonical brand asset set.
 - Added conditional Developer ID signing and Apple notarization to tagged release builds.
+- Reduced song-change latency for the dashboard, Discord presence, and Last.fm now-playing updates.
+- Made artwork transitions clear stale covers immediately, retry Apple Music artwork, and fall back to Apple-hosted catalog artwork.
+- Added dynamic album artwork to Discord Rich Presence with the PresenceFM mark as an immediate fallback.
+- Prevented background Keychain reads from displaying password prompts or blocking playback after an unsigned development build changes identity.
 
 ## 0.1.0
 

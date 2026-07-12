@@ -14,22 +14,34 @@ enum DiscordError: LocalizedError, Equatable {
 }
 
 actor DiscordPresenceClient: PresencePublishing {
-    private let keychain: KeychainStore
+    private var applicationID: String
     private var socketFD: Int32 = -1
     private var lastPresence: DiscordPresence?
     private var lastPublishAt: Date?
     private(set) var socketPath: String?
 
-    init(keychain: KeychainStore) { self.keychain = keychain }
+    init(applicationID: String = ReleaseConfiguration.discordApplicationID) {
+        self.applicationID = applicationID.isEmpty ? ReleaseConfiguration.discordApplicationID : applicationID
+    }
     deinit { if socketFD >= 0 { Darwin.close(socketFD) } }
 
     func publish(_ presence: DiscordPresence) async throws {
         if presence == lastPresence, let lastPublishAt, Date().timeIntervalSince(lastPublishAt) < 15 { return }
         try await connectIfNeeded()
+        let activity = Self.activityPayload(for: presence)
+        try send(opcode: 1, payload: [
+            "cmd": "SET_ACTIVITY", "args": ["pid": ProcessInfo.processInfo.processIdentifier, "activity": activity],
+            "nonce": UUID().uuidString
+        ])
+        lastPresence = presence
+        lastPublishAt = .now
+    }
+
+    nonisolated static func activityPayload(for presence: DiscordPresence) -> [String: Any] {
         let largeImage = presence.artworkURL?.absoluteString ?? "presencefm"
         var activity: [String: Any] = [
             "type": 2, "details": presence.title, "state": presence.state,
-            "assets": ["large_image": largeImage, "large_text": "Apple Music"]
+            "assets": ["large_image": largeImage, "large_text": presence.artworkURL == nil ? "PresenceFM" : "Apple Music album artwork"]
         ]
         if let startedAt = presence.startedAt {
             activity["timestamps"] = ["start": Int(startedAt.timeIntervalSince1970 * 1_000)]
@@ -38,12 +50,7 @@ actor DiscordPresenceClient: PresencePublishing {
             let label = presence.buttonLabel.trimmingCharacters(in: .whitespacesAndNewlines)
             activity["buttons"] = [["label": String((label.isEmpty ? "Listen on Apple Music" : label).prefix(32)), "url": url.absoluteString]]
         }
-        try send(opcode: 1, payload: [
-            "cmd": "SET_ACTIVITY", "args": ["pid": ProcessInfo.processInfo.processIdentifier, "activity": activity],
-            "nonce": UUID().uuidString
-        ])
-        lastPresence = presence
-        lastPublishAt = .now
+        return activity
     }
 
     func clear() async {
@@ -64,10 +71,13 @@ actor DiscordPresenceClient: PresencePublishing {
         lastPublishAt = nil
     }
 
+    func setApplicationID(_ value: String) {
+        applicationID = value.isEmpty ? ReleaseConfiguration.discordApplicationID : value
+        disconnect()
+    }
+
     private func connectIfNeeded() async throws {
         guard socketFD < 0 else { return }
-        let override = await keychain.value(for: .discordApplicationID)
-        let applicationID = override?.isEmpty == false ? override! : ReleaseConfiguration.discordApplicationID
         guard !applicationID.isEmpty else {
             throw DiscordError.missingApplicationID
         }

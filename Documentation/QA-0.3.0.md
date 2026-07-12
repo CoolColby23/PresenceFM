@@ -22,6 +22,17 @@ This record contains no credentials, user paths, or listening metadata. It suppl
 - Website: the local dependency-free site loaded in Safari with working semantic navigation, headings, feature content, local brand assets, privacy links, and download links.
 - Repository hygiene: `git diff --check` passed.
 
+## Playback and artwork regression pass
+
+- Repeated live Apple Music track changes updated PresenceFM metadata within the first observation window (under two seconds including UI capture overhead).
+- A previous track's cover is removed immediately at transition; the new cover appeared within approximately three seconds when Apple Music required the Apple-hosted catalog fallback.
+- Discord changed to the new title, artist, album, and timer and exposed the large image as `Apple Music album artwork` on the profile activity card.
+- Pause and Private Mode each cleared the Discord activity; resuming playback/private mode restored it.
+- Last.fm displayed live now-playing metadata and accepted a qualified listen exactly once during the test session.
+- Multiple package rebuilds and launches did not display a macOS password dialog. When an unsigned rebuild no longer matched the existing Keychain ACL, PresenceFM remained responsive and failed into reauthorization instead of blocking playback; a stable signed release is still required for credential continuity across upgrades.
+- History period/outcome/search filters, no-match state, CSV export, cancel/confirm clear flow, and queue isolation passed. A database backup restored all history and queue data after the destructive test.
+- Automated regression suite: 29 tests passed across seven suites after the latency, artwork, Discord, and Keychain-loading changes.
+
 ## Not exercised in this environment
 
 - Clean-install Gatekeeper flow and Automation permission denial/recovery. The tested machine already had app state and permissions.

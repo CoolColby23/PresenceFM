@@ -22,7 +22,9 @@ actor PlaybackMonitor: PlaybackProviding {
         while !Task.isCancelled {
             let snapshot = Self.readMusic()
             continuation?.yield(snapshot)
-            let interval: Duration = snapshot.state == .playing ? .seconds(2) : .seconds(8)
+            // Music does not expose a reliable public callback for every playback change.
+            // Keep the fallback poll quick enough that track transitions feel immediate.
+            let interval: Duration = snapshot.state == .playing ? .milliseconds(500) : .seconds(2)
             try? await Task.sleep(for: interval)
         }
     }
