@@ -62,7 +62,7 @@ struct SettingsView: View {
             Section("Advanced") {
                 DisclosureGroup("Custom application credentials", isExpanded: $showAdvancedCredentials) {
                     SecureField("Discord Application ID", text: $model.credentialDraft.discordApplicationID)
-                    Text("The override is stored in Keychain. Leave it empty to use the official PresenceFM Discord application.")
+                    Text("The override is stored in PresenceFM's private local settings. Leave it empty to use the official PresenceFM Discord application.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Save Discord Override") { Task { await model.saveCredentials() } }.presenceButton(prominent: true)
                 }

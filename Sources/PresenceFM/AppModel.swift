@@ -21,13 +21,13 @@ final class AppModel {
     let preferences: Preferences
 
     @ObservationIgnored let store: PersistenceStore
-    @ObservationIgnored private let keychain = KeychainStore()
+    @ObservationIgnored private let credentials = CredentialStore()
     @ObservationIgnored private let monitor = PlaybackMonitor()
     @ObservationIgnored private let tracker = PlaybackSessionTracker()
     @ObservationIgnored private let artwork = ArtworkService()
     @ObservationIgnored private let notifications: NotificationCoordinator
     @ObservationIgnored private lazy var discord = DiscordPresenceClient(applicationID: preferences.discordApplicationID)
-    @ObservationIgnored private lazy var lastFM = LastFMClient(keychain: keychain)
+    @ObservationIgnored private lazy var lastFM = LastFMClient(credentials: credentials)
     @ObservationIgnored private lazy var queue = ScrobbleQueue(store: store, client: lastFM)
     @ObservationIgnored private var monitoringTask: Task<Void, Never>?
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
@@ -124,8 +124,8 @@ final class AppModel {
         do {
             preferences.discordApplicationID = credentialDraft.discordApplicationID
             await discord.setApplicationID(credentialDraft.discordApplicationID)
-            try await keychain.set(credentialDraft.lastFMAPIKey, for: .lastFMAPIKey)
-            try await keychain.set(credentialDraft.lastFMSecret, for: .lastFMSecret)
+            try await credentials.set(credentialDraft.lastFMAPIKey, for: .lastFMAPIKey)
+            try await credentials.set(credentialDraft.lastFMSecret, for: .lastFMSecret)
             store.log("security", "Credentials updated")
         } catch { store.log("security", error.localizedDescription) }
     }
@@ -142,8 +142,8 @@ final class AppModel {
     }
 
     func disconnectLastFM() async {
-        await keychain.remove(.lastFMSessionKey)
-        await keychain.remove(.lastFMUsername)
+        try? await credentials.remove(.lastFMSessionKey)
+        try? await credentials.remove(.lastFMUsername)
         lastFMUsername = ""
         preferences.lastFMEnabled = false
         lastFMStatus = .disabled
@@ -169,8 +169,8 @@ final class AppModel {
 
     private func loadCredentials() async {
         credentialDraft.discordApplicationID = preferences.discordApplicationID
-        credentialDraft.lastFMAPIKey = await keychain.value(for: .lastFMAPIKey) ?? ""
-        lastFMUsername = await keychain.value(for: .lastFMUsername) ?? ""
+        credentialDraft.lastFMAPIKey = await credentials.value(for: .lastFMAPIKey) ?? ""
+        lastFMUsername = await credentials.value(for: .lastFMUsername) ?? ""
         discordStatus = (credentialDraft.discordApplicationID.isEmpty && !ReleaseConfiguration.hasDiscordConfiguration) ? .disabled : .connecting
         lastFMStatus = preferences.lastFMEnabled ? (lastFMUsername.isEmpty ? .authorizationExpired : .connected) : .disabled
     }

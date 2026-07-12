@@ -18,8 +18,8 @@
 - Reduced song-change latency for the dashboard, Discord presence, and Last.fm now-playing updates.
 - Made artwork transitions clear stale covers immediately, retry Apple Music artwork, and fall back to Apple-hosted catalog artwork.
 - Added dynamic album artwork to Discord Rich Presence with the PresenceFM mark as an immediate fallback.
-- Prevented background Keychain reads from displaying password prompts or blocking playback after an unsigned development build changes identity.
-- Made local packaging use an available Apple Development identity so repeated development builds keep a stable Keychain identity.
+- Removed Keychain access entirely to eliminate password prompts in unsigned and ad-hoc signed builds; Last.fm credentials now live in an owner-only local file.
+- Made packaging fall back to ad-hoc signing when no Apple signing identity is available, so releases do not require a paid developer account.
 
 ## 0.1.0
 

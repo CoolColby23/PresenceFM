@@ -42,6 +42,10 @@ if [[ "${PRESENCEFM_SKIP_SIGNING:-0}" != "1" ]]; then
       --sign "$SIGNING_IDENTITY" "$APP"
     codesign --verify --deep --strict --verbose=2 "$APP"
     echo "Signed with $SIGNING_IDENTITY"
+  else
+    codesign --force --sign - --entitlements "$ROOT/Distribution.entitlements" "$APP"
+    codesign --verify --deep --strict --verbose=2 "$APP"
+    echo "Ad-hoc signed (no paid Apple Developer account required)"
   fi
 fi
 

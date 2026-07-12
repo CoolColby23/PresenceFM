@@ -14,12 +14,12 @@ enum LastFMError: LocalizedError {
 }
 
 actor LastFMClient: Scrobbling, ScrobbleSubmitting {
-    private let keychain: KeychainStore
+    private let credentialsStore: CredentialStore
     private let session: URLSession
     private var earliestRequestAt = Date.distantPast
 
-    init(keychain: KeychainStore, session: URLSession = .shared) {
-        self.keychain = keychain; self.session = session
+    init(credentials: CredentialStore, session: URLSession = .shared) {
+        self.credentialsStore = credentials; self.session = session
     }
 
     func beginAuthorization() async throws -> URL {
@@ -29,20 +29,20 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
               let url = URL(string: "https://www.last.fm/api/auth/?api_key=\(credentials.key)&token=\(token)") else {
             throw LastFMError.invalidResponse
         }
-        try await keychain.set(token, for: .lastFMSessionKey)
+        try await credentialsStore.set(token, for: .lastFMSessionKey)
         return url
     }
 
     func completeAuthorization() async throws -> String {
         let credentials = try await credentials(requireSession: false)
-        guard let token = await keychain.value(for: .lastFMSessionKey) else { throw LastFMError.unauthenticated }
+        guard let token = await credentialsStore.value(for: .lastFMSessionKey) else { throw LastFMError.unauthenticated }
         let response = try await call(method: "auth.getSession", parameters: ["token": token], signed: true, sessionKey: nil, credentials: credentials)
         guard let sessionObject = response["session"] as? [String: Any],
               let key = sessionObject["key"] as? String, let name = sessionObject["name"] as? String else {
             throw LastFMError.invalidResponse
         }
-        try await keychain.set(key, for: .lastFMSessionKey)
-        try await keychain.set(name, for: .lastFMUsername)
+        try await credentialsStore.set(key, for: .lastFMSessionKey)
+        try await credentialsStore.set(name, for: .lastFMUsername)
         return name
     }
 
@@ -68,11 +68,11 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
     private struct Credentials { let key: String; let secret: String; let sessionKey: String? }
 
     private func credentials(requireSession: Bool) async throws -> Credentials {
-        guard let key = await keychain.value(for: .lastFMAPIKey), !key.isEmpty,
-              let secret = await keychain.value(for: .lastFMSecret), !secret.isEmpty else {
+        guard let key = await credentialsStore.value(for: .lastFMAPIKey), !key.isEmpty,
+              let secret = await credentialsStore.value(for: .lastFMSecret), !secret.isEmpty else {
             throw LastFMError.missingCredentials
         }
-        let sessionKey = await keychain.value(for: .lastFMSessionKey)
+        let sessionKey = await credentialsStore.value(for: .lastFMSessionKey)
         if requireSession && (sessionKey?.isEmpty != false) { throw LastFMError.unauthenticated }
         return Credentials(key: key, secret: secret, sessionKey: sessionKey)
     }
@@ -84,10 +84,14 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
     }
 
     private func call(method: String, parameters: [String: String], signed: Bool, sessionKey: String?, credentials: Credentials) async throws -> [String: Any] {
-        while earliestRequestAt.timeIntervalSinceNow > 0 {
-            try await Task.sleep(for: .seconds(earliestRequestAt.timeIntervalSinceNow))
-        }
-        earliestRequestAt = Date().addingTimeInterval(0.35)
+        // Reserve the request slot before suspending. Actors are reentrant, so merely
+        // sleeping until earliestRequestAt lets every waiting call wake together and
+        // send a burst that Last.fm rejects with error 29.
+        let now = Date()
+        let requestAt = max(now, earliestRequestAt)
+        earliestRequestAt = requestAt.addingTimeInterval(0.35)
+        let delay = requestAt.timeIntervalSince(now)
+        if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
         var values = parameters
         values["method"] = method; values["api_key"] = credentials.key
         if let sessionKey { values["sk"] = sessionKey }

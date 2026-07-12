@@ -1,76 +1,54 @@
 import Foundation
-import LocalAuthentication
-import Security
 
 enum Credential: String, CaseIterable, Sendable {
     case discordApplicationID, lastFMAPIKey, lastFMSecret, lastFMSessionKey, lastFMUsername
 }
 
-actor KeychainStore {
-    private let service = "fm.presence.PresenceFM"
-    private var cache: [Credential: String] = [:]
-    private var loaded: Set<Credential> = []
+/// Stores credentials without invoking macOS Keychain. Ad-hoc signed builds change
+/// identity between releases, which makes Keychain repeatedly request the user's
+/// password. This owner-only file works consistently for free, unsigned distribution.
+actor CredentialStore {
+    private let fileURL: URL
+    private var values: [String: String]
+
+    init(baseDirectory: URL? = nil) {
+        let directory = baseDirectory ?? FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!.appendingPathComponent("PresenceFM", isDirectory: true)
+        fileURL = directory.appendingPathComponent("credentials.json")
+        if let data = try? Data(contentsOf: fileURL),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            values = decoded
+        } else {
+            values = [:]
+        }
+    }
 
     func set(_ value: String, for credential: Credential) throws {
-        let key = credential.rawValue
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key
-        ]
-        let data = Data(value.utf8)
-        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        let status: OSStatus
-        if updateStatus == errSecItemNotFound {
-            var item = query
-            item[kSecValueData as String] = data
-            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-            status = SecItemAdd(item as CFDictionary, nil)
-        } else {
-            status = updateStatus
-        }
-        guard status == errSecSuccess else { throw KeychainError.status(status) }
-        cache[credential] = value
-        loaded.insert(credential)
+        if value.isEmpty { values.removeValue(forKey: credential.rawValue) }
+        else { values[credential.rawValue] = value }
+        try persist()
     }
 
     func value(for credential: Credential) -> String? {
-        if loaded.contains(credential) { return cache[credential] }
-        let authenticationContext = LAContext()
-        authenticationContext.interactionNotAllowed = true
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: credential.rawValue,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            // Background startup must never summon a password dialog or stall
-            // playback while macOS evaluates an outdated unsigned-build ACL.
-            kSecUseAuthenticationContext as String: authenticationContext
-        ]
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound {
-            loaded.insert(credential)
-            return nil
-        }
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let value = String(data: data, encoding: .utf8) else { return nil }
-        cache[credential] = value
-        loaded.insert(credential)
-        return value
+        values[credential.rawValue]
     }
 
-    func remove(_ credential: Credential) {
-        SecItemDelete([
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: credential.rawValue
-        ] as CFDictionary)
-        cache.removeValue(forKey: credential)
-        loaded.insert(credential)
+    func remove(_ credential: Credential) throws {
+        values.removeValue(forKey: credential.rawValue)
+        try persist()
+    }
+
+    private func persist() throws {
+        let directory = fileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let data = try JSONEncoder().encode(values)
+        try data.write(to: fileURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 }
-
-enum KeychainError: Error { case status(OSStatus) }
