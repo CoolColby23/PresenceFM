@@ -29,7 +29,9 @@ jobs:
           PRESENCEFM_VERSION: ${{ github.ref_name }}
         run: |
           PRESENCEFM_VERSION="${PRESENCEFM_VERSION#v}"
-          ditto -c -k --keepParent PresenceFM.app "PresenceFM-${PRESENCEFM_VERSION}.zip"
+          # Resource-fork metadata is unnecessary for this bundle and otherwise
+          # creates noisy AppleDouble entries in the downloadable archive.
+          ditto -c -k --norsrc --keepParent PresenceFM.app "PresenceFM-${PRESENCEFM_VERSION}.zip"
       - name: Create checksum
         env:
           PRESENCEFM_VERSION: ${{ github.ref_name }}

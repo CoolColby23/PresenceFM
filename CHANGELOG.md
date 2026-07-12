@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 - Unreleased
+## 0.3.0 - 2026-07-12
 
 - Added a private Listening History dashboard with search, period and outcome filters.
 - Added local listening totals, listening time, top artists, and a seven-day activity chart.
@@ -20,6 +20,8 @@
 - Added dynamic album artwork to Discord Rich Presence with the PresenceFM mark as an immediate fallback.
 - Removed Keychain access entirely to eliminate password prompts in unsigned and ad-hoc signed builds; Last.fm credentials now live in an owner-only local file.
 - Made packaging fall back to ad-hoc signing when no Apple signing identity is available, so releases do not require a paid developer account.
+- Prevented overlapping queue drains from submitting the same Last.fm scrobble more than once.
+- Updated the project website with the current version, release highlights, and an on-page changelog.
 
 ## 0.1.0
 

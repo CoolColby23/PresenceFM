@@ -35,7 +35,7 @@ Artwork is read from Apple Music and stored only in a bounded temporary cache. M
 4. Open PresenceFM. For an older unsigned release, Control-click PresenceFM and choose **Open**; if macOS still blocks it, approve it under **System Settings → Privacy & Security**.
 5. Approve Apple Music Automation access when prompted.
 
-The release workflow signs and notarizes builds when the repository's Apple Developer credentials are configured. Otherwise it produces an unsigned draft release for testing; replacing an unsigned build may cause macOS to request Automation access again.
+PresenceFM releases are ad-hoc signed because the project does not use a paid Apple Developer account. macOS cannot notarize these builds, so the first launch requires the Control-click **Open** flow described above.
 
 ## Build from source
 
@@ -48,10 +48,13 @@ open PresenceFM.app
 
 PresenceFM includes Discord application ID `1525555974390153346`. Development builds can still override it under **Settings → Advanced** or with `PRESENCEFM_DISCORD_APPLICATION_ID` while packaging.
 
-Each user supplies their own Last.fm API key and shared secret during onboarding. PresenceFM stores those credentials and the resulting session token in macOS Keychain; they are never bundled into releases.
+Each user supplies their own Last.fm API key and shared secret during onboarding. To avoid repeated macOS Keychain prompts in ad-hoc signed releases, PresenceFM stores those credentials and the resulting session token in `~/Library/Application Support/PresenceFM/credentials.json`, readable only by the current macOS user. They are never bundled into releases.
 
 ## Scrobbling behavior
 
 A track becomes eligible after listening to 50% of its duration or four minutes, whichever comes first. Tracks of 30 seconds or less, radio streams, and tracks with incomplete metadata are not scrobbled. Eligible submissions are deduplicated and retained locally for retry when Last.fm is unavailable.
 
-See [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), [SUPPORT.md](SUPPORT.md), and [CONTRIBUTING.md](CONTRIBUTING.md).
+See [PLAN.md](PLAN.md) for planned work, plus [PRIVACY.md](PRIVACY.md),
+[SECURITY.md](SECURITY.md), [SUPPORT.md](SUPPORT.md), and
+[CONTRIBUTING.md](CONTRIBUTING.md). Release history is maintained in
+[CHANGELOG.md](CHANGELOG.md).

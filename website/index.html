@@ -19,6 +19,7 @@
       <nav aria-label="Primary navigation">
         <a href="#features">Features</a>
         <a href="#privacy">Privacy</a>
+        <a href="#changelog">Changelog</a>
         <a href="https://github.com/CoolColby23/PresenceFM" rel="noreferrer">GitHub</a>
       </nav>
       <button class="menu-button" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
@@ -27,7 +28,7 @@
     <main id="main">
       <section class="hero" id="top">
         <div class="hero-copy">
-          <p class="eyebrow">macOS app · open source</p>
+          <p class="eyebrow">PresenceFM 0.3.0 · macOS app · open source</p>
           <h1>Your music, <span class="accent">present.</span></h1>
           <p class="deck">Share what you’re playing in Apple Music on Discord and keep your Last.fm history in sync—from one private-by-default Mac app.</p>
           <div class="actions">
@@ -46,8 +47,8 @@
             <img src="assets/signal-album.png" alt="Album artwork" />
             <div>
               <span class="label">Now playing</span>
-              <h2>Signal Bloom</h2>
-              <p>Northstar · Night Current</p>
+              <h2>iloveitiloveitiloveit</h2>
+              <p>Bella Kay</p>
             </div>
           </div>
           <div class="app-preview-footer">
@@ -106,14 +107,38 @@
               <p>PresenceFM never asks you to create an account or connect to its own server.</p>
             </li>
             <li>
-              <strong>Credentials in your Keychain.</strong>
-              <p>Your Last.fm credentials and session token stay in macOS Keychain.</p>
+              <strong>Credentials stay on your Mac.</strong>
+              <p>Your Last.fm credentials and session token are kept in an owner-only local file.</p>
             </li>
             <li>
               <strong>Private Mode, on your terms.</strong>
               <p>Pause Discord presence and Last.fm updates for a while—or until you return.</p>
             </li>
           </ul>
+        </div>
+      </section>
+
+      <section class="changelog" id="changelog">
+        <div class="section-intro">
+          <p class="eyebrow">Latest release</p>
+          <h2>What’s new in 0.3.0</h2>
+          <p>A richer now-playing experience, private listening insights, and more dependable service recovery.</p>
+        </div>
+        <div class="release-card">
+          <div class="release-heading">
+            <div>
+              <span class="release-version">Version 0.3.0</span>
+              <h3>Listening history meets richer presence</h3>
+            </div>
+            <time datetime="2026-07-12">July 12, 2026</time>
+          </div>
+          <ul>
+            <li>Searchable, private listening history with insights, filters, CSV export, and retention controls.</li>
+            <li>Live artwork, playback timing, eligibility progress, and clearer status across the app and menu bar.</li>
+            <li>Faster Discord and Last.fm updates, resilient queue processing, and direct recovery actions.</li>
+            <li>Owner-only local credential storage for consistent, prompt-free upgrades.</li>
+          </ul>
+          <a class="text-link" href="../CHANGELOG.md">Read the full changelog <span aria-hidden="true">→</span></a>
         </div>
       </section>
 
@@ -135,6 +160,7 @@
       <div class="footer-links">
         <a href="../PRIVACY.md">Privacy</a>
         <a href="../SUPPORT.md">Support</a>
+        <a href="../CHANGELOG.md">Changelog</a>
         <a href="https://github.com/CoolColby23/PresenceFM">GitHub</a>
       </div>
       <p>Built for macOS. Open source.</p>

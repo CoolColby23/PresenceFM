@@ -7,6 +7,7 @@ final class ScrobbleQueue {
     private let client: any ScrobbleSubmitting
     private let now: @Sendable () -> Date
     private var processingTask: Task<Void, Never>?
+    private var isProcessing = false
     var onStuck: ((String) -> Void)?
 
     init(store: PersistenceStore, client: any ScrobbleSubmitting, now: @escaping @Sendable () -> Date = Date.init) {
@@ -33,6 +34,14 @@ final class ScrobbleQueue {
     func remove(id: UUID) { store.removeScrobble(id: id) }
 
     func process() async {
+        // enqueue(), the periodic worker, startup recovery, and manual retries can all
+        // request processing at once. Main-actor methods are reentrant across awaits,
+        // so explicitly keep a single queue drain in flight to avoid submitting the
+        // same persisted record multiple times and tripping Last.fm's rate limit.
+        guard !isProcessing else { return }
+        isProcessing = true
+        defer { isProcessing = false }
+
         let now = now()
         let descriptor = FetchDescriptor<ScrobbleRecord>(
             predicate: #Predicate { ($0.stateRaw == "pending" || $0.stateRaw == "retrying") && $0.nextAttemptAt <= now },

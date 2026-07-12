@@ -2,7 +2,7 @@
 
 Date: 2026-07-12
 
-Build: 0.3.0 (3), locally packaged unsigned build
+Build: 0.3.0 (3), locally packaged ad-hoc signed build
 
 Environment: macOS 27.0 (26A5378j), Apple silicon
 
@@ -10,7 +10,7 @@ This record contains no credentials, user paths, or listening metadata. It suppl
 
 ## Passed
 
-- `swift test`: 26 tests passed across playback sessions, persistence and queue, artwork, listening insights, preferences and notifications, and security.
+- `swift test`: 31 tests passed across playback sessions, persistence and queue, artwork, listening insights, preferences and notifications, and security.
 - Release build: `swift build -c release` completed successfully.
 - Packaging: `scripts/package-app.sh` produced a launchable app with bundle version 0.3.0 (3), minimum macOS 15.0, the expected Apple Events usage description, and the bundled Discord application ID.
 - Dashboard: the packaged app launched, reported Apple Music connected, and displayed the idle now-playing state without a crash.
@@ -29,9 +29,9 @@ This record contains no credentials, user paths, or listening metadata. It suppl
 - Discord changed to the new title, artist, album, and timer and exposed the large image as `Apple Music album artwork` on the profile activity card.
 - Pause and Private Mode each cleared the Discord activity; resuming playback/private mode restored it.
 - Last.fm displayed live now-playing metadata and accepted a qualified listen exactly once during the test session.
-- Multiple package rebuilds and launches did not display a macOS password dialog. When an unsigned rebuild no longer matched the existing Keychain ACL, PresenceFM remained responsive and failed into reauthorization instead of blocking playback; a stable signed release is still required for credential continuity across upgrades.
+- Multiple package rebuilds and launches did not display a macOS password dialog. Last.fm credentials persisted in the owner-only local credentials file without Keychain ACL prompts.
 - History period/outcome/search filters, no-match state, CSV export, cancel/confirm clear flow, and queue isolation passed. A database backup restored all history and queue data after the destructive test.
-- Automated regression suite: 29 tests passed across seven suites after the latency, artwork, Discord, and Keychain-loading changes.
+- Automated regression suite: 31 tests passed across seven suites after the latency, artwork, Discord, credential-storage, and queue-concurrency changes.
 
 ## Not exercised in this environment
 
@@ -43,6 +43,6 @@ This record contains no credentials, user paths, or listening metadata. It suppl
 - CSV export, retention pruning, and clear-history confirmation. These could create files or delete existing local history.
 - Upgrade migration from a preserved 0.2 data fixture.
 - Launch-at-login mutation and behavior on macOS 15 through 26.
-- Developer ID signing and Apple notarization. CI secrets and an Apple Developer identity are required.
+- Developer ID signing and Apple notarization. This release intentionally uses ad-hoc signing because the project does not have a paid Apple Developer account; the documented Gatekeeper first-launch step remains an accepted distribution risk.
 
 These items must pass before the draft GitHub release is published publicly. Tag creation should wait until the account-dependent checks are complete or are explicitly accepted as release risk.

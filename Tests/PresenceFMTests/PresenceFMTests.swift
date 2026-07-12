@@ -232,6 +232,18 @@ private final class FakeNotificationDelivery: NotificationDelivering {
 
 @Suite("Security")
 struct SecurityTests {
+    @Test func credentialsPersistInOwnerOnlyFile() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = CredentialStore(baseDirectory: directory)
+        try await store.set("secret-value", for: .lastFMSecret)
+
+        let reloaded = CredentialStore(baseDirectory: directory)
+        #expect(await reloaded.value(for: .lastFMSecret) == "secret-value")
+        let attributes = try FileManager.default.attributesOfItem(atPath: directory.appendingPathComponent("credentials.json").path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+    }
+
     @Test func redactsSecretsAndUserPaths() {
         let output = Redactor.redact("api_key=abc123 /Users/colby/file token xyz Authorization: Bearer bearer-value")
         #expect(!output.contains("abc123")); #expect(!output.contains("colby")); #expect(!output.contains("xyz")); #expect(!output.contains("bearer-value"))
@@ -313,6 +325,24 @@ struct PersistenceAndQueueTests {
         await queue.process()
         #expect(record.state == .submitted)
     }
+
+    @Test func overlappingQueueDrainsSubmitARecordOnlyOnce() async throws {
+        let store = try PersistenceStore(inMemory: true)
+        store.enqueue(session())
+        let submitter = SuspendedSubmitter()
+        let queue = ScrobbleQueue(store: store, client: submitter)
+
+        async let first: Void = queue.process()
+        await submitter.waitUntilStarted()
+        async let second: Void = queue.process()
+        await second
+        await submitter.resume()
+        await first
+
+        #expect(await submitter.submissionCount == 1)
+        let record = try #require(store.context.fetch(FetchDescriptor<ScrobbleRecord>()).first)
+        #expect(record.state == .submitted)
+    }
 }
 
 private actor SuccessfulSubmitter: ScrobbleSubmitting {
@@ -323,6 +353,29 @@ private actor FailingSubmitter: ScrobbleSubmitting {
     let error: LastFMError
     init(error: LastFMError) { self.error = error }
     func scrobble(title: String, artist: String, album: String?, duration: Double, startedAt: Date) async throws { throw error }
+}
+
+private actor SuspendedSubmitter: ScrobbleSubmitting {
+    private(set) var submissionCount = 0
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var resumeContinuation: CheckedContinuation<Void, Never>?
+
+    func scrobble(title: String, artist: String, album: String?, duration: Double, startedAt: Date) async throws {
+        submissionCount += 1
+        startedContinuation?.resume()
+        startedContinuation = nil
+        await withCheckedContinuation { resumeContinuation = $0 }
+    }
+
+    func waitUntilStarted() async {
+        if submissionCount > 0 { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func resume() {
+        resumeContinuation?.resume()
+        resumeContinuation = nil
+    }
 }
 
 @MainActor
