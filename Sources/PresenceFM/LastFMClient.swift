@@ -16,6 +16,7 @@ enum LastFMError: LocalizedError {
 actor LastFMClient: Scrobbling, ScrobbleSubmitting {
     private let keychain: KeychainStore
     private let session: URLSession
+    private var earliestRequestAt = Date.distantPast
 
     init(keychain: KeychainStore, session: URLSession = .shared) {
         self.keychain = keychain; self.session = session
@@ -83,6 +84,10 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
     }
 
     private func call(method: String, parameters: [String: String], signed: Bool, sessionKey: String?, credentials: Credentials) async throws -> [String: Any] {
+        while earliestRequestAt.timeIntervalSinceNow > 0 {
+            try await Task.sleep(for: .seconds(earliestRequestAt.timeIntervalSinceNow))
+        }
+        earliestRequestAt = Date().addingTimeInterval(0.35)
         var values = parameters
         values["method"] = method; values["api_key"] = credentials.key
         if let sessionKey { values["sk"] = sessionKey }
@@ -93,9 +98,20 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = values.sorted { $0.key < $1.key }.map { "\($0.key.formEncoded)=\($0.value.formEncoded)" }.joined(separator: "&").data(using: .utf8)
         do {
-            let (data, _) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 429 {
+                let retryAfter = TimeInterval(http.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 30
+                earliestRequestAt = Date().addingTimeInterval(max(5, retryAfter))
+                throw LastFMError.api(29, "Last.fm is busy. PresenceFM will retry automatically.")
+            }
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                throw LastFMError.transport("Last.fm returned HTTP \(http.statusCode).")
+            }
             guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw LastFMError.invalidResponse }
-            if let code = object["error"] as? Int { throw LastFMError.api(code, object["message"] as? String ?? "Last.fm error \(code)") }
+            if let code = object["error"] as? Int {
+                if code == 29 { earliestRequestAt = Date().addingTimeInterval(30) }
+                throw LastFMError.api(code, object["message"] as? String ?? "Last.fm error \(code)")
+            }
             return object
         } catch let error as LastFMError { throw error }
         catch { throw LastFMError.transport(error.localizedDescription) }

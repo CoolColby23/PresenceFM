@@ -68,7 +68,7 @@ actor PlaybackSessionTracker {
 
     private func eligibility(for session: PlaybackSession) -> ScrobbleEligibility {
         guard session.track.isScrobbleable else { return .ineligible }
-        let threshold = min(session.track.duration * 0.5, 240)
+        let threshold = session.scrobbleThreshold
         return session.accumulatedPlayTime >= threshold ? .eligible : .listening
     }
 

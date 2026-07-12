@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import SwiftData
 import Testing
 @testable import PresenceFM
@@ -89,6 +90,102 @@ struct PlaybackSessionTests {
         _ = await tracker.ingest(.init(track: stream, state: .playing, position: 300, observedAt: start.addingTimeInterval(300), confidence: .high))
         #expect(await tracker.active?.eligibility == .ineligible)
     }
+
+    @Test func listeningPresentationReportsProgressAndRemainingTime() {
+        var session = PlaybackSession(id: UUID(), track: track, startedAt: .now, accumulatedPlayTime: 25, lastPosition: 25, eligibility: .listening, outcome: .active)
+        guard case .listening(let progress, let remaining) = session.scrobblePresentation else {
+            Issue.record("Expected listening presentation")
+            return
+        }
+        #expect(progress == 0.5)
+        #expect(remaining == 25)
+        session.accumulatedPlayTime = 50
+        session.eligibility = .eligible
+        #expect(session.scrobblePresentation == .ready)
+    }
+
+    @Test func ineligiblePresentationExplainsStreams() {
+        let stream = TrackMetadata(identity: .init(persistentID: "radio"), title: "Station", artist: "Host", album: nil, duration: 3_600, source: .unsupportedStream, appleMusicURL: nil, artworkReference: nil)
+        let session = PlaybackSession(id: UUID(), track: stream, startedAt: .now, accumulatedPlayTime: 0, lastPosition: 0, eligibility: .ineligible, outcome: .active)
+        #expect(session.scrobblePresentation == .ineligible("Radio streams are not scrobbled."))
+    }
+}
+
+@Suite("Artwork")
+struct ArtworkTests {
+    @Test func rejectsCorruptArtworkAndBoundsMemoryCache() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let service = ArtworkService(memoryLimit: 2, diskLimit: 2, directory: directory)
+        #expect(await !service.cache(Data("not an image".utf8), for: .init(persistentID: "bad")))
+        let imageData = try #require(Self.imageData())
+        #expect(await service.cache(imageData, for: .init(persistentID: "1")))
+        #expect(await service.cache(imageData, for: .init(persistentID: "2")))
+        #expect(await service.cache(imageData, for: .init(persistentID: "3")))
+        #expect(await service.memoryEntryCount == 2)
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        #expect(files.count == 2)
+    }
+
+    private static func imageData() -> Data? {
+        let image = NSImage(size: NSSize(width: 2, height: 2))
+        image.lockFocus(); NSColor.systemBlue.setFill(); NSRect(x: 0, y: 0, width: 2, height: 2).fill(); image.unlockFocus()
+        guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff) else { return nil }
+        return bitmap.representation(using: .png, properties: [:])
+    }
+}
+
+@MainActor
+@Suite("Preferences and notifications")
+struct PreferencesAndNotificationTests {
+    @Test func preferencesPersistAndRemainObservableState() {
+        let name = "PresenceFMTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.showAlbum = false
+        preferences.privateUntil = Date(timeIntervalSince1970: 123)
+        let reloaded = Preferences(defaults: defaults)
+        #expect(!reloaded.showAlbum)
+        #expect(reloaded.privateUntil == Date(timeIntervalSince1970: 123))
+    }
+
+    @Test func notificationsAreDeduplicatedAndResettable() async {
+        let delivery = FakeNotificationDelivery()
+        let coordinator = NotificationCoordinator(delivery: delivery)
+        await coordinator.notifyOnce(key: "permission", title: "Title", body: "Body", section: .diagnostics)
+        await coordinator.notifyOnce(key: "permission", title: "Title", body: "Body", section: .diagnostics)
+        #expect(delivery.sections == [.diagnostics])
+        coordinator.reset("permission")
+        await coordinator.notifyOnce(key: "permission", title: "Title", body: "Body", section: .settings)
+        #expect(delivery.sections == [.diagnostics, .settings])
+    }
+
+    @Test func timedPrivacyExpiresWithoutAViewRead() async throws {
+        let name = "PresenceFMTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.privateMode = true
+        preferences.privateUntil = .now.addingTimeInterval(0.05)
+        let store = try PersistenceStore(inMemory: true)
+        let model = AppModel(
+            store: store,
+            preferences: preferences,
+            notifications: NotificationCoordinator(delivery: FakeNotificationDelivery())
+        )
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(!preferences.privateMode)
+        #expect(preferences.privateUntil == nil)
+        #expect(!model.isPrivate)
+    }
+}
+
+@MainActor
+private final class FakeNotificationDelivery: NotificationDelivering {
+    var sections: [DashboardSection] = []
+    func requestAuthorization() async -> Bool { true }
+    func deliver(identifier: String, title: String, body: String, section: DashboardSection) async { sections.append(section) }
 }
 
 @Suite("Security")
@@ -184,4 +281,59 @@ private actor FailingSubmitter: ScrobbleSubmitting {
     let error: LastFMError
     init(error: LastFMError) { self.error = error }
     func scrobble(title: String, artist: String, album: String?, duration: Double, startedAt: Date) async throws { throw error }
+}
+
+@MainActor
+@Suite("Listening insights")
+struct ListeningInsightsTests {
+    @Test func summaryCountsListensMinutesArtistsAndDays() throws {
+        let store = try PersistenceStore(inMemory: true)
+        let now = Date.now
+        store.record(session(title: "One", artist: "Artist A", startedAt: now.addingTimeInterval(-3_600), listened: 120, outcome: .played))
+        store.record(session(title: "Two", artist: "Artist A", startedAt: now.addingTimeInterval(-1_800), listened: 180, outcome: .played))
+        store.record(session(title: "Skip", artist: "Artist B", startedAt: now, listened: 10, outcome: .skipped))
+        let records = try store.context.fetch(FetchDescriptor<ActivityRecord>())
+        let summary = ListeningSummary(records: records, now: now)
+        #expect(summary.total == 3)
+        #expect(summary.played == 2)
+        #expect(summary.skipped == 1)
+        #expect(summary.listeningMinutes == 5)
+        #expect(summary.topArtists.first == ArtistPlayCount(artist: "Artist A", plays: 2))
+        #expect(summary.dailyCounts.reduce(0) { $0 + $1.plays } == 2)
+    }
+
+    @Test func csvEscapesMetadataAndClearHistoryDoesNotTouchQueue() throws {
+        let store = try PersistenceStore(inMemory: true)
+        let value = session(title: "A, \"Quoted\" Song", artist: "Artist", startedAt: .now, listened: 60, outcome: .played)
+        store.record(value)
+        store.enqueue(value)
+        let records = try store.context.fetch(FetchDescriptor<ActivityRecord>())
+        let csv = HistoryCSVExporter.csv(records: records)
+        #expect(csv.contains("\"A, \"\"Quoted\"\" Song\""))
+        store.clearActivity()
+        #expect(try store.context.fetchCount(FetchDescriptor<ActivityRecord>()) == 0)
+        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == 1)
+    }
+
+    @Test func discordApplicationIDIsBundled() {
+        #expect(ReleaseConfiguration.discordApplicationID == "1525555974390153346")
+    }
+
+    private func session(
+        title: String,
+        artist: String,
+        startedAt: Date,
+        listened: TimeInterval,
+        outcome: SessionOutcome
+    ) -> PlaybackSession {
+        let track = TrackMetadata(
+            identity: .init(persistentID: UUID().uuidString), title: title, artist: artist,
+            album: "Album", duration: 240, source: .appleMusicCatalog,
+            appleMusicURL: nil, artworkReference: nil
+        )
+        return PlaybackSession(
+            id: UUID(), track: track, startedAt: startedAt, accumulatedPlayTime: listened,
+            lastPosition: listened, eligibility: outcome == .played ? .eligible : .listening, outcome: outcome
+        )
+    }
 }

@@ -5,8 +5,9 @@ ROOT="${0:A:h:h}"
 cd "$ROOT"
 swift build -c release
 
-VERSION="${PRESENCEFM_VERSION:-0.1.0}"
-BUILD_NUMBER="${PRESENCEFM_BUILD_NUMBER:-1}"
+VERSION="${PRESENCEFM_VERSION:-0.3.0}"
+BUILD_NUMBER="${PRESENCEFM_BUILD_NUMBER:-3}"
+DISCORD_APPLICATION_ID="${PRESENCEFM_DISCORD_APPLICATION_ID:-1525555974390153346}"
 
 APP="$ROOT/PresenceFM.app"
 CONTENTS="$APP/Contents"
@@ -28,11 +29,6 @@ plutil -insert LSMinimumSystemVersion -string 15.0 "$CONTENTS/Info.plist"
 plutil -insert NSAppleEventsUsageDescription -string "PresenceFM reads the track currently playing in Apple Music. It does not control playback or modify your library." "$CONTENTS/Info.plist"
 plutil -insert NSHumanReadableCopyright -string "PresenceFM contributors" "$CONTENTS/Info.plist"
 
-for key in PRESENCEFM_DISCORD_APPLICATION_ID; do
-  value="${(P)key:-}"
-  if [[ -n "$value" ]]; then
-    plutil -insert "$key" -string "$value" "$CONTENTS/Info.plist"
-  fi
-done
+plutil -insert PRESENCEFM_DISCORD_APPLICATION_ID -string "$DISCORD_APPLICATION_ID" "$CONTENTS/Info.plist"
 
 echo "Created $APP"

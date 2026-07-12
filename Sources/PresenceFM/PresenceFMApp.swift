@@ -1,6 +1,7 @@
 import AppKit
 import SwiftData
 import SwiftUI
+import UserNotifications
 
 @main
 struct PresenceFMApp: App {
@@ -37,10 +38,23 @@ struct PresenceFMApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        Task { @MainActor in
-            guard let app = NSApp.delegate as? AppDelegate else { return }
-            _ = app
-        }
+        UNUserNotificationCenter.current().delegate = self
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let section = response.notification.request.content.userInfo["section"] as? String
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: .presenceFMOpenSection,
+                object: nil,
+                userInfo: section.map { ["section": $0] }
+            )
+        }
+    }
 }

@@ -1,13 +1,15 @@
-# Public v0.1 Manual QA
+# Public v0.3 Manual QA
 
 Record the app version, macOS version, and pass/fail evidence for every item. Do not attach secrets or unredacted personal paths.
 
 ## Clean installation and Apple Music
 
-- Verify the release archive checksum, move the unsigned app to Applications, and complete the documented Gatekeeper flow.
+- Verify the release archive checksum, move the app to Applications, and confirm its signature/notarization. For an unsigned test build, complete the documented Gatekeeper flow.
 - Deny Apple Music Automation once; confirm the app shows permission required, publishes nothing, and explains recovery.
 - Grant Automation access and confirm playing, paused, stopped, local-file, and unsupported radio states.
 - Seek forward and backward, pause for several minutes, change tracks, quit Music, and relaunch PresenceFM. Confirm listening time and recent activity remain credible.
+- Confirm album artwork appears without delaying metadata updates, changes with the track, and falls back to the PresenceFM mark when unavailable.
+- Confirm elapsed/remaining playback time and scrobble eligibility progress remain correct while playing, paused, and seeking.
 
 ## Discord
 
@@ -15,6 +17,8 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 - Launch Discord, play a track, and confirm title, artist/album, and timer settings.
 - Pause playback, enable Private Mode, quit Music, and quit PresenceFM; confirm presence clears in each case.
 - Relaunch Discord and PresenceFM and confirm presence recovers without rerunning onboarding.
+- Change album, timer, and link options during playback and confirm Discord presence refreshes immediately.
+- Use timed Private Mode, sleep and wake the Mac across its expiration, and confirm presence resumes at the expected time.
 
 ## Last.fm and queue
 
@@ -25,6 +29,23 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 - Revoke the Last.fm session and confirm authorization-expired state plus a usable reauthorization path.
 - Disconnect Last.fm in Settings and confirm scrobbling is disabled while the API key and shared secret remain available for reauthorization.
 - Exercise retry and remove actions on failed queue records.
+- Search recent activity by title, artist, and album; confirm empty and no-match states are distinct.
+
+## Notifications and recovery
+
+- Deny notifications and confirm the app continues working without repeated prompts or errors.
+- Trigger lost Automation permission, expired Last.fm authorization, and three queue failures; confirm each condition produces at most one redacted notification.
+- Click each notification and confirm PresenceFM opens the corresponding Diagnostics, Settings, or Queue section.
+- Exercise Automation Settings, Discord reconnect, Last.fm reconnect, and queue retry actions from the app.
+
+## Listening history
+
+- Accumulate played and skipped tracks and confirm totals, listening minutes, artist counts, and the seven-day chart update.
+- Search title, artist, and album; combine search with 7-day, 30-day, all-time, played, and skipped filters.
+- Export visible history and verify CSV quoting, timestamps, filtering, and Unicode metadata in Numbers or a text editor.
+- Change retention to 30 days and verify only older activity is removed. Choose Forever and verify no age-based removal occurs.
+- Clear history, cancel once, then confirm deletion. Verify Last.fm history and the scrobble queue are unaffected.
+- Upgrade from 0.2 data and confirm older records remain visible even when duration and listening-time details are unavailable.
 
 ## Lifecycle and compatibility
 

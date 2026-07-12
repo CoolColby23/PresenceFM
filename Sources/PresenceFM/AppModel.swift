@@ -16,25 +16,58 @@ final class AppModel {
     var selectedSection: DashboardSection = .nowPlaying
     var credentialDraft = CredentialDraft()
     var lastFMUsername = ""
+    var artworkData: Data?
+    var discordArtworkURL: URL?
+    let preferences: Preferences
 
     @ObservationIgnored let store: PersistenceStore
     @ObservationIgnored private let keychain = KeychainStore()
     @ObservationIgnored private let monitor = PlaybackMonitor()
     @ObservationIgnored private let tracker = PlaybackSessionTracker()
+    @ObservationIgnored private let artwork = ArtworkService()
+    @ObservationIgnored private let notifications: NotificationCoordinator
     @ObservationIgnored private lazy var discord = DiscordPresenceClient(keychain: keychain)
     @ObservationIgnored private lazy var lastFM = LastFMClient(keychain: keychain)
     @ObservationIgnored private lazy var queue = ScrobbleQueue(store: store, client: lastFM)
     @ObservationIgnored private var monitoringTask: Task<Void, Never>?
+    @ObservationIgnored private var privacyTask: Task<Void, Never>?
+    @ObservationIgnored private var sectionObserver: NSObjectProtocol?
     @ObservationIgnored private var started = false
 
-    init(store: PersistenceStore) {
+    init(
+        store: PersistenceStore,
+        preferences: Preferences = .shared,
+        notifications: NotificationCoordinator = NotificationCoordinator()
+    ) {
         self.store = store
-        onboardingPresented = !Preferences.shared.onboardingComplete
+        self.preferences = preferences
+        self.notifications = notifications
+        onboardingPresented = !preferences.onboardingComplete
+        schedulePrivacyExpiration()
+        sectionObserver = NotificationCenter.default.addObserver(
+            forName: .presenceFMOpenSection,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let name = notification.userInfo?["section"] as? String,
+                  let section = DashboardSection(rawValue: name) else { return }
+            Task { @MainActor in self?.selectedSection = section; NSApp.activate() }
+        }
     }
 
     func start() {
         guard !started else { return }
         started = true
+        queue.onStuck = { [weak self] title in
+            Task { @MainActor in
+                await self?.notifications.notifyOnce(
+                    key: "queue-stuck",
+                    title: "Scrobble still queued",
+                    body: "\(title) could not be submitted after several attempts.",
+                    section: .queue
+                )
+            }
+        }
         queue.start()
         monitoringTask = Task {
             let stream = await monitor.snapshots()
@@ -42,7 +75,9 @@ final class AppModel {
                 snapshot = value
                 musicStatus = value.confidence == .low ? .awaitingPermission : .connected
                 await handle(await tracker.ingest(value))
+                await updateArtwork(for: value.track)
                 await updateDiscord()
+                await updateOperationalNotifications()
             }
         }
         Task { await loadCredentials(); await queue.process() }
@@ -53,6 +88,7 @@ final class AppModel {
         started = false
         monitoringTask?.cancel()
         queue.stop()
+        privacyTask?.cancel()
         Task {
             if let session = await tracker.shutdown() { await MainActor.run { finalize(session) } }
             await discord.clear(); await monitor.stop()
@@ -60,14 +96,16 @@ final class AppModel {
     }
 
     func setPrivate(until: Date?) {
-        Preferences.shared.privateMode = true
-        Preferences.shared.privateUntil = until
+        preferences.privateMode = true
+        preferences.privateUntil = until
+        schedulePrivacyExpiration()
         Task { await discord.clear() }
     }
 
     func endPrivateMode() {
-        Preferences.shared.privateMode = false; Preferences.shared.privateUntil = nil
-        Task { await updateDiscord() }
+        privacyTask?.cancel()
+        preferences.privateMode = false; preferences.privateUntil = nil
+        Task { await updateDiscord(); await updateOperationalNotifications() }
     }
 
     func saveCredentials() async {
@@ -94,25 +132,25 @@ final class AppModel {
         await keychain.remove(.lastFMSessionKey)
         await keychain.remove(.lastFMUsername)
         lastFMUsername = ""
-        Preferences.shared.lastFMEnabled = false
+        preferences.lastFMEnabled = false
         lastFMStatus = .disabled
         store.log("lastfm", "Account disconnected")
     }
 
     func completeOnboarding() {
-        Preferences.shared.onboardingComplete = true
+        preferences.onboardingComplete = true
         onboardingPresented = false
-        if Preferences.shared.privateMode { endPrivateMode() }
+        if preferences.privateMode { endPrivateMode() }
     }
 
     func requestNotifications() async {
-        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+        _ = await notifications.requestAuthorization()
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
         do {
             if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-            Preferences.shared.launchAtLogin = enabled
+            preferences.launchAtLogin = enabled
         } catch { store.log("login", error.localizedDescription) }
     }
 
@@ -129,12 +167,12 @@ final class AppModel {
             switch event {
             case .started(let session):
                 activeSession = session
-                if Preferences.shared.lastFMEnabled && Preferences.shared.sendNowPlaying && !isPrivate {
+                if preferences.lastFMEnabled && preferences.sendNowPlaying && !isPrivate {
                     do { try await lastFM.updateNowPlaying(session); lastFMStatus = .connected }
                     catch { updateLastFMStatus(for: error) }
                 }
             case .updated(let session): activeSession = session
-            case .eligible(let session): activeSession = session; if Preferences.shared.lastFMEnabled && !isPrivate { queue.enqueue(session) }
+            case .eligible(let session): activeSession = session; if preferences.lastFMEnabled && !isPrivate { queue.enqueue(session) }
             case .finalized(let session): finalize(session)
             case .none: break
             }
@@ -144,27 +182,56 @@ final class AppModel {
     private func finalize(_ session: PlaybackSession) {
         activeSession = nil; recentSessions.insert(session, at: 0)
         if recentSessions.count > 200 { recentSessions.removeLast() }
-        store.record(session)
+        store.record(session, artworkData: artworkData)
     }
 
     private func updateDiscord() async {
-        guard Preferences.shared.discordEnabled, !isPrivate,
+        guard preferences.discordEnabled, !isPrivate,
               snapshot.state == .playing, snapshot.confidence != .low, let session = activeSession else {
-            await discord.clear(); discordStatus = Preferences.shared.discordEnabled ? .connecting : .disabled; return
+            await discord.clear(); discordStatus = preferences.discordEnabled ? .connecting : .disabled; return
         }
-        let state = Preferences.shared.showAlbum && session.track.album != nil
-            ? "\(session.track.artist) • \(session.track.album!)" : session.track.artist
-        let presence = DiscordPresence(title: session.track.title, state: state,
-                                       startedAt: Preferences.shared.showTimer ? session.startedAt : nil,
-                                       appleMusicURL: Preferences.shared.showLink ? session.track.appleMusicURL : nil)
+        let album = session.track.album ?? ""
+        let presence = DiscordPresence(title: preferences.discordLineOne.value(title: session.track.title, artist: session.track.artist, album: album),
+                                       state: preferences.discordLineTwo.value(title: session.track.title, artist: session.track.artist, album: album),
+                                       startedAt: preferences.showTimer ? session.startedAt : nil,
+                                       appleMusicURL: preferences.showLink ? session.track.appleMusicURL : nil,
+                                       artworkURL: discordArtworkURL,
+                                       buttonLabel: preferences.discordButtonLabel)
         do { try await discord.publish(presence); discordStatus = .connected }
         catch let error as DiscordError {
             discordStatus = error == .unavailable ? .offline : .failed(error.localizedDescription)
         } catch { discordStatus = .failed(error.localizedDescription) }
     }
 
-    func retryScrobble(id: UUID) { queue.retry(id: id) }
+    func retryScrobble(id: UUID) { notifications.reset("queue-stuck"); queue.retry(id: id) }
     func removeScrobble(id: UUID) { queue.remove(id: id) }
+    func clearListeningHistory() { store.clearActivity() }
+    func applyHistoryRetention() { store.applyHistoryRetention(days: preferences.historyRetentionDays) }
+
+    func setDiscordEnabled(_ enabled: Bool) {
+        preferences.discordEnabled = enabled
+        Task { enabled ? await updateDiscord() : await discord.clear() }
+        discordStatus = enabled ? .connecting : .disabled
+    }
+
+    func setLastFMEnabled(_ enabled: Bool) {
+        preferences.lastFMEnabled = enabled
+        lastFMStatus = enabled ? (lastFMUsername.isEmpty ? .authorizationExpired : .connected) : .disabled
+    }
+
+    func refreshDiscord() { Task { await discord.disconnect(); await updateDiscord() } }
+
+    func refreshPresenceOptions() { Task { await discord.clear(); await updateDiscord() } }
+
+    func openAutomationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    var scrobblePresentation: ScrobblePresentationState? { activeSession?.scrobblePresentation }
+
+    var privateUntil: Date? { isPrivate ? preferences.privateUntil : nil }
 
     private func updateLastFMStatus(for error: Error) {
         if case LastFMError.unauthenticated = error { lastFMStatus = .authorizationExpired }
@@ -173,36 +240,114 @@ final class AppModel {
         else { lastFMStatus = .failed(error.localizedDescription) }
     }
 
-    var isPrivate: Bool {
-        if let until = Preferences.shared.privateUntil, until <= .now {
-            Preferences.shared.privateMode = false; Preferences.shared.privateUntil = nil
+    private func updateArtwork(for track: TrackMetadata?) async {
+        guard let track else { artworkData = nil; discordArtworkURL = nil; return }
+        let identity = track.identity
+        let data = await artwork.artwork(for: track)
+        let publicURL = await artwork.publicArtworkURL(for: track)
+        guard snapshot.track?.identity == identity else { return }
+        artworkData = data
+        discordArtworkURL = publicURL
+    }
+
+    private func schedulePrivacyExpiration() {
+        privacyTask?.cancel()
+        guard preferences.privateMode, let until = preferences.privateUntil else { return }
+        if until <= .now { endPrivateMode(); return }
+        privacyTask = Task { [weak self] in
+            let duration = max(0, until.timeIntervalSinceNow)
+            try? await Task.sleep(for: .seconds(duration))
+            guard !Task.isCancelled else { return }
+            self?.endPrivateMode()
         }
-        return Preferences.shared.privateMode
+    }
+
+    private func updateOperationalNotifications() async {
+        if musicStatus == .awaitingPermission {
+            await notifications.notifyOnce(
+                key: "music-permission",
+                title: "Apple Music access needed",
+                body: "Open PresenceFM to restore Automation permission.",
+                section: .diagnostics
+            )
+        } else { notifications.reset("music-permission") }
+
+        if lastFMStatus == .authorizationExpired {
+            await notifications.notifyOnce(
+                key: "lastfm-authorization",
+                title: "Reconnect Last.fm",
+                body: "Your Last.fm authorization expired. Open PresenceFM to reconnect.",
+                section: .settings
+            )
+        } else { notifications.reset("lastfm-authorization") }
+    }
+
+    var isPrivate: Bool {
+        preferences.privateMode && (preferences.privateUntil == nil || preferences.privateUntil! > .now)
     }
 }
 
 struct CredentialDraft { var discordApplicationID = ""; var lastFMAPIKey = ""; var lastFMSecret = "" }
 
 enum DashboardSection: String, CaseIterable, Identifiable {
-    case nowPlaying = "Now Playing", recent = "Recent Activity", queue = "Queue", diagnostics = "Diagnostics", settings = "Settings"
+    case nowPlaying = "Now Playing", history = "Listening History", queue = "Queue", diagnostics = "Diagnostics", settings = "Settings"
     var id: Self { self }
     var symbol: String {
-        switch self { case .nowPlaying: "music.note"; case .recent: "clock"; case .queue: "tray.full"; case .diagnostics: "stethoscope"; case .settings: "gear" }
+        switch self { case .nowPlaying: "music.note"; case .history: "chart.bar.xaxis"; case .queue: "tray.full"; case .diagnostics: "stethoscope"; case .settings: "gear" }
     }
 }
 
-@MainActor
+@MainActor @Observable
 final class Preferences {
     static let shared = Preferences()
-    private let defaults = UserDefaults.standard
-    var onboardingComplete: Bool { get { defaults.bool(forKey: "onboardingComplete") } set { defaults.set(newValue, forKey: "onboardingComplete") } }
-    var discordEnabled: Bool { get { defaults.bool(forKey: "discordEnabled") } set { defaults.set(newValue, forKey: "discordEnabled") } }
-    var lastFMEnabled: Bool { get { defaults.bool(forKey: "lastFMEnabled") } set { defaults.set(newValue, forKey: "lastFMEnabled") } }
-    var sendNowPlaying: Bool { get { defaults.object(forKey: "sendNowPlaying") as? Bool ?? true } set { defaults.set(newValue, forKey: "sendNowPlaying") } }
-    var privateMode: Bool { get { defaults.object(forKey: "privateMode") as? Bool ?? true } set { defaults.set(newValue, forKey: "privateMode") } }
-    var privateUntil: Date? { get { defaults.object(forKey: "privateUntil") as? Date } set { defaults.set(newValue, forKey: "privateUntil") } }
-    var showAlbum: Bool { get { defaults.object(forKey: "showAlbum") as? Bool ?? true } set { defaults.set(newValue, forKey: "showAlbum") } }
-    var showTimer: Bool { get { defaults.object(forKey: "showTimer") as? Bool ?? true } set { defaults.set(newValue, forKey: "showTimer") } }
-    var showLink: Bool { get { defaults.object(forKey: "showLink") as? Bool ?? true } set { defaults.set(newValue, forKey: "showLink") } }
-    var launchAtLogin: Bool { get { defaults.bool(forKey: "launchAtLogin") } set { defaults.set(newValue, forKey: "launchAtLogin") } }
+    @ObservationIgnored private let defaults: UserDefaults
+    var onboardingComplete: Bool { didSet { defaults.set(onboardingComplete, forKey: "onboardingComplete") } }
+    var discordEnabled: Bool { didSet { defaults.set(discordEnabled, forKey: "discordEnabled") } }
+    var lastFMEnabled: Bool { didSet { defaults.set(lastFMEnabled, forKey: "lastFMEnabled") } }
+    var sendNowPlaying: Bool { didSet { defaults.set(sendNowPlaying, forKey: "sendNowPlaying") } }
+    var privateMode: Bool { didSet { defaults.set(privateMode, forKey: "privateMode") } }
+    var privateUntil: Date? { didSet { defaults.set(privateUntil, forKey: "privateUntil") } }
+    var showAlbum: Bool { didSet { defaults.set(showAlbum, forKey: "showAlbum") } }
+    var showTimer: Bool { didSet { defaults.set(showTimer, forKey: "showTimer") } }
+    var showLink: Bool { didSet { defaults.set(showLink, forKey: "showLink") } }
+    var discordLineOne: DiscordLineFormat { didSet { defaults.set(discordLineOne.rawValue, forKey: "discordLineOne") } }
+    var discordLineTwo: DiscordLineFormat { didSet { defaults.set(discordLineTwo.rawValue, forKey: "discordLineTwo") } }
+    var discordButtonLabel: String { didSet { defaults.set(discordButtonLabel, forKey: "discordButtonLabel") } }
+    var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: "launchAtLogin") } }
+    var historyRetentionDays: Int { didSet { defaults.set(historyRetentionDays, forKey: "historyRetentionDays") } }
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        onboardingComplete = defaults.bool(forKey: "onboardingComplete")
+        discordEnabled = defaults.bool(forKey: "discordEnabled")
+        lastFMEnabled = defaults.bool(forKey: "lastFMEnabled")
+        sendNowPlaying = defaults.object(forKey: "sendNowPlaying") as? Bool ?? true
+        privateMode = defaults.object(forKey: "privateMode") as? Bool ?? true
+        privateUntil = defaults.object(forKey: "privateUntil") as? Date
+        showAlbum = defaults.object(forKey: "showAlbum") as? Bool ?? true
+        showTimer = defaults.object(forKey: "showTimer") as? Bool ?? true
+        showLink = defaults.object(forKey: "showLink") as? Bool ?? true
+        discordLineOne = DiscordLineFormat(rawValue: defaults.string(forKey: "discordLineOne") ?? "") ?? .title
+        discordLineTwo = DiscordLineFormat(rawValue: defaults.string(forKey: "discordLineTwo") ?? "") ?? .artistAndAlbum
+        discordButtonLabel = defaults.string(forKey: "discordButtonLabel") ?? "Listen on Apple Music"
+        launchAtLogin = defaults.bool(forKey: "launchAtLogin")
+        historyRetentionDays = defaults.object(forKey: "historyRetentionDays") as? Int ?? 365
+    }
+}
+
+enum DiscordLineFormat: String, CaseIterable, Identifiable {
+    case title = "Track title"
+    case artist = "Artist"
+    case album = "Album"
+    case artistAndAlbum = "Artist • Album"
+    var id: Self { self }
+
+    func value(title: String, artist: String, album: String) -> String {
+        switch self {
+        case .title: title
+        case .artist: artist
+        case .album: album.isEmpty ? artist : album
+        case .artistAndAlbum: album.isEmpty ? artist : "\(artist) • \(album)"
+        }
+    }
 }

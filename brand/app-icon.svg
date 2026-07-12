@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <linearGradient id="disc" x1="270" y1="270" x2="754" y2="754" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#14D9FF"/>
+      <stop offset="1" stop-color="#1F66FF"/>
+    </linearGradient>
+    <mask id="hole">
+      <rect x="0" y="0" width="1024" height="1024" fill="#fff"/>
+      <circle cx="512" cy="512" r="110" fill="#000"/>
+    </mask>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="#07142F"/>
+  <g mask="url(#hole)">
+    <circle cx="512" cy="512" r="320" fill="url(#disc)"/>
+    <circle cx="512" cy="512" r="320" fill="none" stroke="#F7F9FF" stroke-opacity=".28" stroke-width="10"/>
+    <path d="M290 364A320 320 0 0 1 659 229" stroke="#F7F9FF" stroke-opacity=".55" stroke-width="24" stroke-linecap="round"/>
+  </g>
+  <circle cx="512" cy="512" r="118" fill="none" stroke="#F7F9FF" stroke-opacity=".18" stroke-width="8"/>
+</svg>

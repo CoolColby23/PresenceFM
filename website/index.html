@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="PresenceFM shares what’s playing in Apple Music on Discord and keeps your Last.fm history in sync—from one private-by-default Mac app." />
+    <meta name="theme-color" content="#07142f" />
+    <title>PresenceFM — Your music, present.</title>
+    <link rel="icon" href="../brand/presencefm-symbol.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="PresenceFM home">
+        <img src="../brand/presencefm-symbol.svg" alt="" />
+        <span>PresenceFM</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#features">Features</a>
+        <a href="#privacy">Privacy</a>
+        <a href="https://github.com/CoolColby23/PresenceFM" rel="noreferrer">GitHub</a>
+      </nav>
+      <button class="menu-button" aria-label="Open navigation" aria-expanded="false"><span></span><span></span></button>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="hero-copy">
+          <p class="eyebrow">macOS app · open source</p>
+          <h1>Your music, <span class="accent">present.</span></h1>
+          <p class="deck">Share what you’re playing in Apple Music on Discord and keep your Last.fm history in sync—from one private-by-default Mac app.</p>
+          <div class="actions">
+            <a class="button" href="https://github.com/CoolColby23/PresenceFM/releases/latest">Download for macOS</a>
+            <a class="button button-secondary" href="https://github.com/CoolColby23/PresenceFM">View on GitHub</a>
+          </div>
+          <p class="requirement">Requires macOS 15 or later</p>
+        </div>
+
+        <div class="app-preview" aria-label="PresenceFM now playing preview">
+          <div class="app-preview-bar">
+            <div class="traffic"><i></i><i></i><i></i></div>
+            <span>PresenceFM</span>
+          </div>
+          <div class="app-preview-body">
+            <img src="assets/signal-album.png" alt="Album artwork" />
+            <div>
+              <span class="label">Now playing</span>
+              <h2>Signal Bloom</h2>
+              <p>Northstar · Night Current</p>
+            </div>
+          </div>
+          <div class="app-preview-footer">
+            <div class="status-row">
+              <span><i class="status-dot discord"></i>Discord</span>
+              <em>Publishing</em>
+            </div>
+            <div class="status-row">
+              <span><i class="status-dot lastfm"></i>Last.fm</span>
+              <em>Listening</em>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="features" id="features">
+        <div class="section-intro">
+          <h2>One app, three connections</h2>
+          <p>PresenceFM reads what you’re playing and carries it forward—only when you choose.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="feature-icon music">♪</div>
+            <h3>Apple Music</h3>
+            <p>Reads the current track on your Mac automatically.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon presence">
+              <img src="../brand/presencefm-symbol.svg" alt="" />
+            </div>
+            <h3>PresenceFM</h3>
+            <p>Runs locally on your Mac with controls always close at hand.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon discord">D</div>
+            <h3>Discord</h3>
+            <p>Shows your track as Rich Presence for friends to see.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon lastfm">L</div>
+            <h3>Last.fm</h3>
+            <p>Scrobbles qualified listens reliably, even after brief interruptions.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="privacy" id="privacy">
+        <div class="privacy-inner">
+          <div class="section-intro">
+            <h2>Local by design</h2>
+            <p>PresenceFM runs on your Mac. You decide what leaves it, and when.</p>
+          </div>
+          <ul class="privacy-list">
+            <li>
+              <strong>No account. No backend.</strong>
+              <p>PresenceFM never asks you to create an account or connect to its own server.</p>
+            </li>
+            <li>
+              <strong>Credentials in your Keychain.</strong>
+              <p>Your Last.fm credentials and session token stay in macOS Keychain.</p>
+            </li>
+            <li>
+              <strong>Private Mode, on your terms.</strong>
+              <p>Pause Discord presence and Last.fm updates for a while—or until you return.</p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="cta">
+        <h2>Make your listening present.</h2>
+        <p>Open source. No PresenceFM account. All on your Mac.</p>
+        <div class="actions">
+          <a class="button" href="https://github.com/CoolColby23/PresenceFM/releases/latest">Download for macOS</a>
+          <a class="button button-secondary" href="https://github.com/CoolColby23/PresenceFM">View on GitHub</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand" href="#top">
+        <img src="../brand/presencefm-symbol.svg" alt="" />
+        <span>PresenceFM</span>
+      </a>
+      <div class="footer-links">
+        <a href="../PRIVACY.md">Privacy</a>
+        <a href="../SUPPORT.md">Support</a>
+        <a href="https://github.com/CoolColby23/PresenceFM">GitHub</a>
+      </div>
+      <p>Built for macOS. Open source.</p>
+    </footer>
+    <script src="script.js"></script>
+  </body>
+</html>

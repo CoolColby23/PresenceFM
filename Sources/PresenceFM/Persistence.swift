@@ -9,10 +9,18 @@ final class ActivityRecord {
     var album: String?
     var startedAt: Date
     var outcomeRaw: String
+    var persistentID: String?
+    var duration: Double?
+    var listenedTime: Double?
+    @Attribute(.externalStorage) var artworkData: Data?
 
-    init(session: PlaybackSession) {
+    init(session: PlaybackSession, artworkData: Data? = nil) {
         id = session.id; title = session.track.title; artist = session.track.artist
         album = session.track.album; startedAt = session.startedAt; outcomeRaw = session.outcome.rawValue
+        persistentID = session.track.identity.persistentID
+        duration = session.track.duration
+        listenedTime = session.accumulatedPlayTime
+        self.artworkData = artworkData
     }
 
     var outcomeLabel: String {
@@ -76,9 +84,21 @@ final class PersistenceStore {
         container = try ModelContainer(for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: inMemory))
     }
 
-    func record(_ session: PlaybackSession) {
-        context.insert(ActivityRecord(session: session))
-        trim(ActivityRecord.self, limit: 200, sort: [SortDescriptor(\.startedAt, order: .reverse)])
+    func record(_ session: PlaybackSession, artworkData: Data? = nil) {
+        context.insert(ActivityRecord(session: session, artworkData: artworkData))
+        trim(ActivityRecord.self, limit: 5_000, sort: [SortDescriptor(\.startedAt, order: .reverse)])
+        removeActivity(olderThanDays: Preferences.shared.historyRetentionDays)
+        try? context.save()
+    }
+
+    func clearActivity() {
+        guard let records = try? context.fetch(FetchDescriptor<ActivityRecord>()) else { return }
+        records.forEach(context.delete)
+        try? context.save()
+    }
+
+    func applyHistoryRetention(days: Int) {
+        removeActivity(olderThanDays: days)
         try? context.save()
     }
 
@@ -117,6 +137,13 @@ final class PersistenceStore {
         let descriptor = FetchDescriptor<T>(sortBy: sort)
         guard let records = try? context.fetch(descriptor), records.count > limit else { return }
         records.dropFirst(limit).forEach(context.delete)
+    }
+
+    private func removeActivity(olderThanDays days: Int) {
+        guard days > 0, let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: .now) else { return }
+        let descriptor = FetchDescriptor<ActivityRecord>(predicate: #Predicate { $0.startedAt < cutoff })
+        guard let records = try? context.fetch(descriptor) else { return }
+        records.forEach(context.delete)
     }
 }
 

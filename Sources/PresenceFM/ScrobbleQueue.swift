@@ -7,6 +7,7 @@ final class ScrobbleQueue {
     private let client: any ScrobbleSubmitting
     private let now: @Sendable () -> Date
     private var processingTask: Task<Void, Never>?
+    var onStuck: ((String) -> Void)?
 
     init(store: PersistenceStore, client: any ScrobbleSubmitting, now: @escaping @Sendable () -> Date = Date.init) {
         self.store = store
@@ -49,13 +50,19 @@ final class ScrobbleQueue {
                 if case .api(let code, _) = error, [4, 6, 7, 8, 9, 10, 13, 14, 15, 26].contains(code) { record.state = .permanentlyFailed }
                 else {
                     record.state = .pending
-                    record.nextAttemptAt = retryDate(attempts: record.attempts, from: now)
+                    let rateLimitDelay: TimeInterval = {
+                        if case .api(let code, _) = error, code == 29 { return 60 }
+                        return 0
+                    }()
+                    record.nextAttemptAt = max(retryDate(attempts: record.attempts, from: now), now.addingTimeInterval(rateLimitDelay))
                 }
+                if record.attempts == 3 { onStuck?(record.title) }
             } catch {
                 record.attempts += 1
                 record.state = .pending
                 record.lastError = Redactor.redact(error.localizedDescription)
                 record.nextAttemptAt = retryDate(attempts: record.attempts, from: now)
+                if record.attempts == 3 { onStuck?(record.title) }
             }
             try? store.context.save()
         }

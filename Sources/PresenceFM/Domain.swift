@@ -58,11 +58,54 @@ struct PlaybackSession: Identifiable, Sendable, Codable, Hashable {
     }
 }
 
+enum ScrobblePresentationState: Sendable, Equatable {
+    case ineligible(String)
+    case listening(progress: Double, remaining: TimeInterval)
+    case ready
+    case queued
+    case submitted
+
+    var label: String {
+        switch self {
+        case .ineligible: "Not eligible"
+        case .listening: "Listening"
+        case .ready: "Ready to scrobble"
+        case .queued: "Queued"
+        case .submitted: "Scrobbled"
+        }
+    }
+}
+
+extension PlaybackSession {
+    var scrobbleThreshold: TimeInterval { min(track.duration * 0.5, 240) }
+
+    var scrobblePresentation: ScrobblePresentationState {
+        guard track.isScrobbleable else {
+            if track.source == .unsupportedStream { return .ineligible("Radio streams are not scrobbled.") }
+            if track.duration <= 30 { return .ineligible("Tracks must be longer than 30 seconds.") }
+            return .ineligible("Complete title and artist metadata are required.")
+        }
+        switch outcome {
+        case .queued: return .queued
+        case .submitted: return .submitted
+        default: break
+        }
+        if eligibility == .eligible { return .ready }
+        let threshold = scrobbleThreshold
+        return .listening(
+            progress: threshold > 0 ? min(1, accumulatedPlayTime / threshold) : 0,
+            remaining: max(0, threshold - accumulatedPlayTime)
+        )
+    }
+}
+
 struct DiscordPresence: Sendable, Equatable {
     let title: String
     let state: String
     let startedAt: Date?
     let appleMusicURL: URL?
+    let artworkURL: URL?
+    let buttonLabel: String
 }
 
 enum ServiceStatus: Sendable, Equatable {

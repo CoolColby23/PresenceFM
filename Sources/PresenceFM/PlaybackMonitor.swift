@@ -53,10 +53,13 @@ actor PlaybackMonitor: PlaybackProviding {
         let state: PlaybackState = fields[0] == "playing" ? .playing : .paused
         let kind = fields[7].lowercased()
         let trackSource: TrackSource = kind.contains("url") ? .unsupportedStream : (kind.contains("file") ? .localFile : .appleMusicCatalog)
+        let searchTerms = "\(fields[1]) \(fields[2])"
+        let searchQuery = searchTerms.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let appleMusicURL = trackSource == .unsupportedStream ? nil : URL(string: "https://music.apple.com/us/search?term=\(searchQuery)")
         let track = TrackMetadata(
             identity: TrackIdentity(persistentID: fields[6]), title: fields[1], artist: fields[2],
             album: fields[3].isEmpty ? nil : fields[3], duration: duration, source: trackSource,
-            appleMusicURL: nil, artworkReference: nil
+            appleMusicURL: appleMusicURL, artworkReference: nil
         )
         let hasUsableMetadata = duration > 0 && !fields[1].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !fields[2].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

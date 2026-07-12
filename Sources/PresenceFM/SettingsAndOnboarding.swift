@@ -2,37 +2,53 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
-    @State private var launchAtLogin = Preferences.shared.launchAtLogin
-    @State private var discordEnabled = Preferences.shared.discordEnabled
-    @State private var lastFMEnabled = Preferences.shared.lastFMEnabled
-    @State private var sendNowPlaying = Preferences.shared.sendNowPlaying
-    @State private var showAlbum = Preferences.shared.showAlbum
-    @State private var showTimer = Preferences.shared.showTimer
-    @State private var showLink = Preferences.shared.showLink
     @State private var showAdvancedCredentials = false
 
     var body: some View {
         @Bindable var model = model
+        @Bindable var preferences = model.preferences
         Form {
             Section("General") {
-                Toggle("Launch PresenceFM at login", isOn: $launchAtLogin).onChange(of: launchAtLogin) { _, value in model.setLaunchAtLogin(value) }
+                Toggle("Launch PresenceFM at login", isOn: $preferences.launchAtLogin).onChange(of: preferences.launchAtLogin) { _, value in model.setLaunchAtLogin(value) }
                 Button("Run Onboarding Again") { model.onboardingPresented = true }
             }
+            Section("Listening History") {
+                Picker("Keep history", selection: $preferences.historyRetentionDays) {
+                    Text("30 days").tag(30)
+                    Text("90 days").tag(90)
+                    Text("1 year").tag(365)
+                    Text("Forever").tag(0)
+                }
+                .onChange(of: preferences.historyRetentionDays) { _, _ in model.applyHistoryRetention() }
+                Text("History stays on this Mac and is never uploaded by PresenceFM.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Discord") {
-                Toggle("Enable Discord Rich Presence", isOn: $discordEnabled).onChange(of: discordEnabled) { _, value in Preferences.shared.discordEnabled = value }
-                Toggle("Show album", isOn: $showAlbum).onChange(of: showAlbum) { _, value in Preferences.shared.showAlbum = value }
-                Toggle("Show timer", isOn: $showTimer).onChange(of: showTimer) { _, value in Preferences.shared.showTimer = value }
-                Toggle("Show Apple Music link", isOn: $showLink).onChange(of: showLink) { _, value in Preferences.shared.showLink = value }
+                Toggle("Enable Discord Rich Presence", isOn: $preferences.discordEnabled).onChange(of: preferences.discordEnabled) { _, value in model.setDiscordEnabled(value) }
+                Toggle("Show album", isOn: $preferences.showAlbum).onChange(of: preferences.showAlbum) { _, _ in model.refreshPresenceOptions() }
+                Toggle("Show timer", isOn: $preferences.showTimer).onChange(of: preferences.showTimer) { _, _ in model.refreshPresenceOptions() }
+                Toggle("Show Apple Music link", isOn: $preferences.showLink).onChange(of: preferences.showLink) { _, _ in model.refreshPresenceOptions() }
+                Picker("First line", selection: $preferences.discordLineOne) {
+                    ForEach(DiscordLineFormat.allCases) { Text($0.rawValue).tag($0) }
+                }.onChange(of: preferences.discordLineOne) { _, _ in model.refreshPresenceOptions() }
+                Picker("Second line", selection: $preferences.discordLineTwo) {
+                    ForEach(DiscordLineFormat.allCases) { Text($0.rawValue).tag($0) }
+                }.onChange(of: preferences.discordLineTwo) { _, _ in model.refreshPresenceOptions() }
+                TextField("Button label", text: $preferences.discordButtonLabel)
+                    .onSubmit { model.refreshPresenceOptions() }
+                Text("Discord limits button labels to 32 characters. Changes apply to the next presence update.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if preferences.discordEnabled { Button("Reconnect to Discord") { model.refreshDiscord() } }
             }
             Section("Last.fm") {
                 SecureField("API Key", text: $model.credentialDraft.lastFMAPIKey)
                 SecureField("Shared Secret", text: $model.credentialDraft.lastFMSecret)
-                Toggle("Enable scrobbling", isOn: $lastFMEnabled).onChange(of: lastFMEnabled) { _, value in Preferences.shared.lastFMEnabled = value }
-                Toggle("Send now playing", isOn: $sendNowPlaying).onChange(of: sendNowPlaying) { _, value in Preferences.shared.sendNowPlaying = value }
+                Toggle("Enable scrobbling", isOn: $preferences.lastFMEnabled).onChange(of: preferences.lastFMEnabled) { _, value in model.setLastFMEnabled(value) }
+                Toggle("Send now playing", isOn: $preferences.sendNowPlaying)
                 if !model.lastFMUsername.isEmpty {
                     LabeledContent("Connected account", value: model.lastFMUsername)
                     Button("Disconnect Last.fm", role: .destructive) {
-                        lastFMEnabled = false
+                        preferences.lastFMEnabled = false
                         Task { await model.disconnectLastFM() }
                     }
                 }
@@ -66,6 +82,7 @@ struct OnboardingView: View {
 
     var body: some View {
         @Bindable var model = model
+        @Bindable var preferences = model.preferences
         VStack(spacing: 24) {
             HStack { ForEach(steps.indices, id: \.self) { index in Circle().fill(index <= step ? Color.accentColor : .secondary.opacity(0.25)).frame(width: 8, height: 8) } }
             Group {
@@ -88,7 +105,7 @@ struct OnboardingView: View {
                 Button("Back") { step -= 1 }.disabled(step == 0)
                 Spacer()
                 if step < steps.count - 1 { Button("Continue") { step += 1 }.presenceButton(prominent: true) }
-                else { Button("Finish") { Preferences.shared.discordEnabled = discordEnabled; Preferences.shared.lastFMEnabled = lastFMEnabled && !model.lastFMUsername.isEmpty; model.setLaunchAtLogin(launchAtLogin); model.completeOnboarding() }.presenceButton(prominent: true) }
+                else { Button("Finish") { model.setDiscordEnabled(discordEnabled); model.setLastFMEnabled(lastFMEnabled && !model.lastFMUsername.isEmpty); preferences.launchAtLogin = launchAtLogin; model.setLaunchAtLogin(launchAtLogin); model.completeOnboarding() }.presenceButton(prominent: true) }
             }
         }.padding(32).frame(width: 700, height: 520).interactiveDismissDisabled()
     }

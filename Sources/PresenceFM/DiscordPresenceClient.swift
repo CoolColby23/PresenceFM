@@ -17,29 +17,33 @@ actor DiscordPresenceClient: PresencePublishing {
     private let keychain: KeychainStore
     private var socketFD: Int32 = -1
     private var lastPresence: DiscordPresence?
+    private var lastPublishAt: Date?
     private(set) var socketPath: String?
 
     init(keychain: KeychainStore) { self.keychain = keychain }
     deinit { if socketFD >= 0 { Darwin.close(socketFD) } }
 
     func publish(_ presence: DiscordPresence) async throws {
-        guard presence != lastPresence else { return }
+        if presence == lastPresence, let lastPublishAt, Date().timeIntervalSince(lastPublishAt) < 15 { return }
         try await connectIfNeeded()
+        let largeImage = presence.artworkURL?.absoluteString ?? "presencefm"
         var activity: [String: Any] = [
             "type": 2, "details": presence.title, "state": presence.state,
-            "assets": ["large_image": "presencefm", "large_text": "Apple Music"]
+            "assets": ["large_image": largeImage, "large_text": "Apple Music"]
         ]
         if let startedAt = presence.startedAt {
             activity["timestamps"] = ["start": Int(startedAt.timeIntervalSince1970 * 1_000)]
         }
         if let url = presence.appleMusicURL {
-            activity["buttons"] = [["label": "Open in Apple Music", "url": url.absoluteString]]
+            let label = presence.buttonLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+            activity["buttons"] = [["label": String((label.isEmpty ? "Listen on Apple Music" : label).prefix(32)), "url": url.absoluteString]]
         }
         try send(opcode: 1, payload: [
             "cmd": "SET_ACTIVITY", "args": ["pid": ProcessInfo.processInfo.processIdentifier, "activity": activity],
             "nonce": UUID().uuidString
         ])
         lastPresence = presence
+        lastPublishAt = .now
     }
 
     func clear() async {
@@ -49,6 +53,7 @@ actor DiscordPresenceClient: PresencePublishing {
             "nonce": UUID().uuidString
         ])
         lastPresence = nil
+        lastPublishAt = nil
     }
 
     func disconnect() {
@@ -56,6 +61,7 @@ actor DiscordPresenceClient: PresencePublishing {
         socketFD = -1
         socketPath = nil
         lastPresence = nil
+        lastPublishAt = nil
     }
 
     private func connectIfNeeded() async throws {
@@ -95,8 +101,14 @@ actor DiscordPresenceClient: PresencePublishing {
         var length = UInt32(body.count).littleEndian
         var frame = Data(bytes: &op, count: 4)
         frame.append(Data(bytes: &length, count: 4)); frame.append(body)
-        let written = frame.withUnsafeBytes { Darwin.write(socketFD, $0.baseAddress, frame.count) }
-        guard written == frame.count else { disconnect(); throw DiscordError.writeFailed }
+        var offset = 0
+        while offset < frame.count {
+            let written = frame.withUnsafeBytes { bytes in
+                Darwin.write(socketFD, bytes.baseAddress!.advanced(by: offset), frame.count - offset)
+            }
+            guard written > 0 else { disconnect(); throw DiscordError.writeFailed }
+            offset += written
+        }
     }
 
     private func candidatePaths() -> [String] {
