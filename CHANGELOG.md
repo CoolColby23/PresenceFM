@@ -11,7 +11,8 @@
 ## 0.4.0 - 2026-07-12
 
 - Ship releases as a branded drag-to-Applications DMG.
-- Add Spotify desktop playback detection and platform-aware links and Discord assets.
+- Add Spotify desktop playback detection, YouTube Music playback through YTMDesktop 2's local Companion Server, and best-effort TIDAL playback through macOS Now Playing metadata.
+- Add platform-aware links and Discord assets for every supported playback provider.
 - Add configurable Discord presence lines, button label, timer, link, and small image;
   replace the Apple-Music-specific album-art tooltip with neutral copy.
 - Fix Last.fm reconnection overwriting an active session key, and validate that Last.fm

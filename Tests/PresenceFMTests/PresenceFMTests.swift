@@ -462,15 +462,18 @@ struct PreferencesAndNotificationTests {
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let preferences = Preferences(defaults: defaults)
+        let now = Date(timeIntervalSince1970: 20_000)
+        let clock = ImmediateTestClock(now: now)
         preferences.privateMode = true
-        preferences.privateUntil = .now.addingTimeInterval(0.05)
+        preferences.privateUntil = now.addingTimeInterval(60)
         let store = try PersistenceStore(inMemory: true)
         let model = AppModel(
             store: store,
             preferences: preferences,
-            notifications: NotificationCoordinator(delivery: FakeNotificationDelivery())
+            notifications: NotificationCoordinator(delivery: FakeNotificationDelivery()),
+            clock: clock
         )
-        try await Task.sleep(for: .milliseconds(150))
+        for _ in 0..<5 { await Task.yield() }
         #expect(!preferences.privateMode)
         #expect(preferences.privateUntil == nil)
         #expect(!model.isPrivate)

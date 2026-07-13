@@ -17,9 +17,14 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$ROOT/.build/release/PresenceFM" "$CONTENTS/MacOS/PresenceFM"
 cp "$ROOT/brand/PresenceFM.icns" "$CONTENTS/Resources/PresenceFM.icns"
 RESOURCE_BUNDLE="$ROOT/.build/release/PresenceFM_PresenceFM.bundle"
-if [[ -d "$RESOURCE_BUNDLE" ]]; then
-  cp -R "$RESOURCE_BUNDLE" "$CONTENTS/Resources/PresenceFM_PresenceFM.bundle"
+if [[ ! -d "$RESOURCE_BUNDLE" ]]; then
+  RESOURCE_BUNDLE="$(find "$ROOT/.build" -type d -name 'PresenceFM_PresenceFM.bundle' -ipath '*release*' -print -quit)"
 fi
+[[ -n "$RESOURCE_BUNDLE" && -d "$RESOURCE_BUNDLE" ]] || {
+  echo "SwiftPM resource bundle was not produced" >&2
+  exit 1
+}
+cp -R "$RESOURCE_BUNDLE" "$CONTENTS/Resources/PresenceFM_PresenceFM.bundle"
 
 plutil -create xml1 "$CONTENTS/Info.plist"
 plutil -insert CFBundleName -string PresenceFM "$CONTENTS/Info.plist"

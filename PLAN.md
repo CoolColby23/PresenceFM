@@ -37,8 +37,9 @@ progress, including the requested playback providers.
 - [ ] Run the account- and permission-dependent checks in
   `Documentation/MANUAL-QA.md`, including a clean installation and migration from
   preserved 0.3 data, and record the result in a new 0.4 QA record.
-- [x] Produce the DMG through the release workflow, verify its checksum, bundle
-  metadata, signature, resources, first-launch instructions, and release notes.
+- [-] Verify the local release-candidate DMG, checksum, bundle metadata,
+  signature, resources, and first-launch instructions. The tagged workflow and
+  downloaded GitHub Release artifact remain intentionally gated on manual QA.
 
 ### 0.4.0 release gates
 

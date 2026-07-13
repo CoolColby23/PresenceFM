@@ -1,6 +1,6 @@
 # PresenceFM
 
-PresenceFM is a native macOS menu-bar app that reads the current Apple Music or Spotify track, publishes optional Discord Rich Presence, and scrobbles qualified listens to Last.fm. It runs locally, starts private, and requires no PresenceFM account or backend.
+PresenceFM is a native macOS menu-bar app that reads current playback from Apple Music, Spotify, YouTube Music through YTMDesktop, or TIDAL, publishes optional Discord Rich Presence, and scrobbles qualified listens to Last.fm. It runs locally, starts private, and requires no PresenceFM account or backend.
 
 ## Highlights in 0.4.0
 

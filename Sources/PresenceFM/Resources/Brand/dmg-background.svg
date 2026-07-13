@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="420" viewBox="0 0 660 420">
+  <rect width="660" height="420" fill="#F6F7FA"/>
+
+  <text x="330" y="66"
+        fill="#171A22"
+        font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
+        font-size="22"
+        font-weight="650"
+        letter-spacing="-0.25"
+        text-anchor="middle">Install PresenceFM</text>
+  <text x="330" y="91"
+        fill="#6C7280"
+        font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
+        font-size="13"
+        font-weight="400"
+        text-anchor="middle">Drag the app to Applications</text>
+
+  <path d="M292 235H366M356 225L366 235L356 245"
+        fill="none"
+        stroke="#A0A6B2"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+</svg>

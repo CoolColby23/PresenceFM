@@ -34,13 +34,15 @@ tell application "Finder"
     set theViewOptions to icon view options of container window
     set arrangement of theViewOptions to not arranged
     set icon size of theViewOptions to 96
+    set text size of theViewOptions to 12
     set background picture of theViewOptions to file ".background:background.png"
-    set position of item "PresenceFM.app" of container window to {185, 220}
-    set position of item "Applications" of container window to {475, 220}
+    set position of item "PresenceFM.app" of container window to {180, 235}
+    set position of item "Applications" of container window to {480, 235}
     close
     open
     update without registering applications
     delay 1
+    close
   end tell
 end tell
 APPLESCRIPT
