@@ -16,5 +16,5 @@ Then open `http://localhost:4173/website/`.
 
 - `index.html` — semantic page content
 - `styles.css` — responsive brand system and layout
-- `script.js` — mobile navigation, reveal motion, and privacy-demo state
+- `script.js` — responsive mobile-navigation behavior
 - `assets/` — website-specific raster assets

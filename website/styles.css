@@ -162,7 +162,7 @@ a {
 }
 
 .accent {
-  color: var(--cyan);
+  color: var(--cloud);
 }
 
 .deck {
@@ -425,8 +425,8 @@ section {
 
 .release-card {
   padding: 32px;
-  background: linear-gradient(145deg, rgba(31, 102, 255, 0.12), var(--surface));
-  border: 1px solid rgba(20, 217, 255, 0.18);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 16px;
 }
 
