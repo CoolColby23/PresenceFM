@@ -5,6 +5,7 @@ ROOT="${0:A:h:h}"
 cd "$ROOT"
 "$ROOT/scripts/sync-brand-assets.sh"
 swift build -c release
+BIN_DIR="$(swift build -c release --show-bin-path)"
 
 VERSION="${PRESENCEFM_VERSION:-0.4.0}"
 BUILD_NUMBER="${PRESENCEFM_BUILD_NUMBER:-1}"
@@ -14,12 +15,9 @@ APP="$ROOT/PresenceFM.app"
 CONTENTS="$APP/Contents"
 rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
-cp "$ROOT/.build/release/PresenceFM" "$CONTENTS/MacOS/PresenceFM"
+cp "$BIN_DIR/PresenceFM" "$CONTENTS/MacOS/PresenceFM"
 cp "$ROOT/brand/PresenceFM.icns" "$CONTENTS/Resources/PresenceFM.icns"
-RESOURCE_BUNDLE="$ROOT/.build/release/PresenceFM_PresenceFM.bundle"
-if [[ ! -d "$RESOURCE_BUNDLE" ]]; then
-  RESOURCE_BUNDLE="$(find "$ROOT/.build" -type d -name 'PresenceFM_PresenceFM.bundle' -ipath '*release*' -print -quit)"
-fi
+RESOURCE_BUNDLE="$BIN_DIR/PresenceFM_PresenceFM.bundle"
 [[ -n "$RESOURCE_BUNDLE" && -d "$RESOURCE_BUNDLE" ]] || {
   echo "SwiftPM resource bundle was not produced" >&2
   exit 1

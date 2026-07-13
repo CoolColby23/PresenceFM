@@ -12,7 +12,10 @@ fail() { echo "Package verification failed: $*" >&2; exit 1; }
 [[ -x "$APP/Contents/MacOS/PresenceFM" ]] || fail "executable is missing"
 [[ -f "$PLIST" ]] || fail "Info.plist is missing"
 [[ -f "$APP/Contents/Resources/PresenceFM.icns" ]] || fail "application icon is missing"
-[[ -f "$APP/Contents/Resources/PresenceFM_PresenceFM.bundle/Contents/Resources/presencefm-symbol.svg" ]] || fail "SwiftPM resource bundle is missing"
+RESOURCE_BUNDLE="$APP/Contents/Resources/PresenceFM_PresenceFM.bundle"
+[[ -d "$RESOURCE_BUNDLE" ]] || fail "SwiftPM resource bundle is missing"
+RESOURCE_SYMBOL="$(find "$RESOURCE_BUNDLE" -type f -name 'presencefm-symbol.svg' -print -quit)"
+[[ -n "$RESOURCE_SYMBOL" ]] || fail "SwiftPM resource bundle is missing its symbol"
 
 [[ "$(plutil -extract CFBundleIdentifier raw "$PLIST")" == "fm.presence.PresenceFM" ]] || fail "bundle identifier is wrong"
 [[ "$(plutil -extract CFBundleShortVersionString raw "$PLIST")" == "$EXPECTED_VERSION" ]] || fail "version is wrong"
