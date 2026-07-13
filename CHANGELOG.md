@@ -1,15 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-07-12
 
 - Add deterministic multi-provider coordination, selectable playback providers, shared operational limits, and bounded local integration-health history.
 - Add explicit, versioned SwiftData migration with legacy-store copying, two physical rollback backups, failed-store preservation, non-crashing recovery, bounded diagnostics and scrobble queues, and surfaced persistence failures.
 - Add 7-, 30-, and 90-day comparisons, top tracks and albums, hourly listening, platform summaries, and a documented CSV v1 export.
 - Add validated, credential-free PresenceFM backup and transactional restore with automatic rollback backups.
 - Improve onboarding, VoiceOver status summaries, and keyboard-accessible queue recovery actions.
-
-## 0.4.0 - 2026-07-12
-
 - Ship releases as a branded drag-to-Applications DMG.
 - Add Spotify desktop playback detection, YouTube Music playback through YTMDesktop 2's local Companion Server, and best-effort TIDAL playback through macOS Now Playing metadata.
 - Add platform-aware links and Discord assets for every supported playback provider.

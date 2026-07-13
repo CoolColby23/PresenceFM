@@ -47,11 +47,19 @@ Environment: Apple silicon Mac, macOS 26 development environment, Swift 6.2 / Xc
   scrobble validation, ignored-scrobble rejection, retries, permanent failures,
   and overlapping queue-drain deduplication.
 
-## Account-dependent follow-up
+## Accepted release risks and follow-up
 
 Live YTMDesktop, Spotify, TIDAL, and Last.fm account checks require those desktop
 apps/accounts to be present. They were unavailable in this environment. Discord
-and Apple Music were available for packaged-app inspection. Complete the remaining
-account rows in `Documentation/MANUAL-QA.md` before publishing the release.
+and Apple Music were available for packaged-app inspection.
 
-These checks remain open release gates, not implied passes. Publishing without them requires an explicit accepted-risk note naming each untested provider, account flow, macOS range, and hardware architecture.
+PresenceFM 0.4.0 was released with the following explicitly accepted gaps; none
+of these are implied passes:
+
+- Live Spotify, YTMDesktop, TIDAL, and Last.fm account flows.
+- Clean-install permission denial/recovery and migration from preserved 0.3 data.
+- The full macOS 15–25 compatibility range and Intel hardware.
+- The complete sleep/wake, launch-at-login, notification, keyboard, and VoiceOver matrix.
+
+These remain follow-up compatibility and accessibility work under
+`Documentation/MANUAL-QA.md`.

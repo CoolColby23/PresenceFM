@@ -7,6 +7,8 @@ PresenceFM is a native macOS menu-bar app that reads current playback from Apple
 - Apple Music, Spotify, YouTube Music through YTMDesktop, and best-effort TIDAL playback detection.
 - Platform-aware Discord presentation with configurable lines, artwork, progress, badges, buttons, and links.
 - Stricter Last.fm response validation, reliable retry behavior, privacy-redacted support reports, and a branded DMG.
+- Versioned persistence migration, rollback backups, transactional backup/restore, and bounded local diagnostics.
+- Expanded local insights with period comparisons, top tracks and albums, hourly listening, platform summaries, and a stable CSV v1 export.
 
 Listening insights are calculated entirely on this Mac from PresenceFM's local activity records. They are never uploaded by PresenceFM.
 

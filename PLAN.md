@@ -19,10 +19,12 @@ belong in `CHANGELOG.md`, while detailed release verification belongs in
 Status notation: `[ ]` planned, `[-]` in progress or partially verified, and
 `[x]` complete.
 
-## Now — ship 0.4.0
+## Current release — 0.4.0
 
-Goal: stabilize and publish the integration and distribution work already in
-progress, including the requested playback providers.
+PresenceFM 0.4.0 ships the integration, reliability, and distribution work
+listed below. Account-, OS-range-, and hardware-dependent checks that could not
+be run before publication are recorded as accepted risks in
+`Documentation/QA-0.4.0.md` rather than implied passes.
 
 - [x] Add Spotify playback, configurable Discord presence, stricter Last.fm
   response validation, structured issue forms, and branded DMG packaging.
@@ -34,16 +36,17 @@ progress, including the requested playback providers.
 - [x] Add deterministic tests for Spotify state transitions, source switching,
   provider loss/recovery, Discord configuration rendering, and malformed Last.fm
   responses.
-- [ ] Run the account- and permission-dependent checks in
+- [-] Complete the remaining account- and permission-dependent checks in
   `Documentation/MANUAL-QA.md`, including a clean installation and migration from
-  preserved 0.3 data, and record the result in a new 0.4 QA record.
-- [-] Verify the local release-candidate DMG, checksum, bundle metadata,
-  signature, resources, and first-launch instructions. The tagged workflow and
-  downloaded GitHub Release artifact remain intentionally gated on manual QA.
+  preserved 0.3 data. Unavailable checks are explicitly documented in the 0.4
+  QA record and remain follow-up compatibility work.
+- [x] Verify the release build, app bundle, signature, resources, DMG, and
+  checksum through local packaging and CI at the release revision.
 
-### 0.4.0 release gates
+### 0.4.0 release record
 
-A release is ready when all of the following are true:
+The automated and package-verification gates passed. The release was published
+with the manual coverage exceptions named in `Documentation/QA-0.4.0.md`.
 
 - `swift test` and `swift build -c release` pass.
 - The packaged app launches and contains the intended version, entitlements,
