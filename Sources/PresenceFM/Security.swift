@@ -1,7 +1,7 @@
 import Foundation
 
 enum Credential: String, CaseIterable, Sendable {
-    case discordApplicationID, lastFMAPIKey, lastFMSecret, lastFMSessionKey, lastFMUsername
+    case discordApplicationID, lastFMAPIKey, lastFMSecret, lastFMAuthToken, lastFMSessionKey, lastFMUsername, ytmDesktopToken
 }
 
 /// Stores credentials without invoking macOS Keychain. Ad-hoc signed builds change

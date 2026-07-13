@@ -27,6 +27,7 @@ struct ListeningHistoryView: View {
                         summaryGrid
                         activityChart
                         topArtists
+                        extendedInsightCards
                         historyList
                     }.padding(24)
                 }
@@ -38,7 +39,7 @@ struct ListeningHistoryView: View {
             ToolbarItemGroup {
                 Picker("Period", selection: $period) {
                     ForEach(HistoryPeriod.allCases) { Text($0.rawValue).tag($0) }
-                }.pickerStyle(.segmented).frame(width: 240)
+                }.pickerStyle(.segmented).frame(width: 320)
                 Picker("Outcome", selection: $outcome) {
                     ForEach(HistoryOutcomeFilter.allCases) { Text($0.rawValue).tag($0) }
                 }.frame(width: 110)
@@ -68,13 +69,16 @@ struct ListeningHistoryView: View {
     }
 
     private var summary: ListeningSummary { ListeningSummary(records: filteredRecords) }
+    private var extendedInsights: ExtendedListeningInsights {
+        ExtendedListeningInsights(records: records, period: period)
+    }
 
     private var summaryGrid: some View {
         HStack(spacing: 12) {
-            HistoryMetric(title: "Listens", value: summary.played.formatted(), symbol: "play.fill", tint: BrandColors.electricBlue)
-            HistoryMetric(title: "Minutes", value: summary.listeningMinutes.formatted(), symbol: "clock.fill", tint: BrandColors.violet)
-            HistoryMetric(title: "Skipped", value: summary.skipped.formatted(), symbol: "forward.fill", tint: BrandColors.coral)
-            HistoryMetric(title: "Artists", value: Set(filteredRecords.map(\.artist)).count.formatted(), symbol: "music.mic", tint: BrandColors.magenta)
+            ComparisonHistoryMetric(title: "Listens", value: extendedInsights.comparison.current.listens.formatted(), delta: extendedInsights.comparison.listenDelta, symbol: "play.fill", tint: BrandColors.electricBlue)
+            ComparisonHistoryMetric(title: "Minutes", value: extendedInsights.comparison.current.minutes.formatted(), delta: extendedInsights.comparison.minuteDelta, symbol: "clock.fill", tint: BrandColors.electricBlue)
+            HistoryMetric(title: "Skip Rate", value: extendedInsights.comparison.current.skipRate.formatted(.percent.precision(.fractionLength(0))), symbol: "forward.fill", tint: BrandColors.neutral)
+            ComparisonHistoryMetric(title: "Artists", value: extendedInsights.comparison.current.uniqueArtists.formatted(), delta: extendedInsights.comparison.artistDelta, symbol: "music.mic", tint: BrandColors.electricBlue)
         }
     }
 
@@ -83,7 +87,7 @@ struct ListeningHistoryView: View {
             Text("Last 7 Days").font(.headline)
             Chart(summary.dailyCounts) { item in
                 BarMark(x: .value("Day", item.day, unit: .day), y: .value("Listens", item.plays))
-                    .foregroundStyle(BrandColors.signal)
+                    .foregroundStyle(BrandColors.electricBlue)
                     .cornerRadius(4)
             }
             .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) }
@@ -106,6 +110,46 @@ struct ListeningHistoryView: View {
                 }
             }.padding(18).presenceCard()
         }
+    }
+
+    private var extendedInsightCards: some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                RankedInsightCard(title: "Top Tracks", items: extendedInsights.topTracks)
+                RankedInsightCard(title: "Top Albums", items: extendedInsights.topAlbums)
+            }
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Listening by Hour").font(.headline)
+                    Chart(extendedInsights.hourlyCounts) { item in
+                        BarMark(x: .value("Hour", item.hour), y: .value("Listens", item.plays))
+                            .foregroundStyle(BrandColors.electricBlue)
+                    }
+                    .frame(height: 130)
+                    .accessibilityLabel(hourlyAccessibilitySummary)
+                }.padding(18).presenceCard()
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Music Platforms").font(.headline)
+                    if extendedInsights.platformCounts.isEmpty {
+                        Text("No played tracks in this period.").foregroundStyle(.secondary)
+                    } else {
+                        ForEach(extendedInsights.platformCounts) { item in
+                            LabeledContent(item.platform, value: item.plays.formatted())
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(18).presenceCard()
+            }
+            Text("Comparisons use the immediately preceding equal-length period and all available local history. Search does not change comparison values; retention settings may limit older data.")
+                .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var hourlyAccessibilitySummary: String {
+        guard let peak = extendedInsights.hourlyCounts.max(by: { $0.plays < $1.plays }), peak.plays > 0 else {
+            return "No hourly listening activity in the selected period"
+        }
+        return "Hourly listening activity. The busiest hour begins at \(peak.hour):00 with \(peak.plays) listens."
     }
 
     private var historyList: some View {
@@ -151,6 +195,50 @@ struct ListeningHistoryView: View {
     private func exportVisibleHistory() {
         exportDocument = HistoryCSVDocument(text: HistoryCSVExporter.csv(records: filteredRecords))
         showingExporter = true
+    }
+}
+
+private struct ComparisonHistoryMetric: View {
+    let title: String
+    let value: String
+    let delta: Int?
+    let symbol: String
+    let tint: Color
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(tint)
+            Text(value).font(.title.bold()).monospacedDigit()
+            HStack(spacing: 5) {
+                Text(title)
+                if let delta { Text(delta == 0 ? "No change" : "\(delta > 0 ? "+" : "")\(delta)") }
+            }.font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(16).presenceCard()
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct RankedInsightCard: View {
+    let title: String
+    let items: [RankedListen]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.headline)
+            if items.isEmpty { Text("No played tracks in this period.").foregroundStyle(.secondary) }
+            else {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    HStack {
+                        Text("\(index + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 18)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.name).lineLimit(1)
+                            if let detail = item.detail { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                        }
+                        Spacer()
+                        Text(item.plays.formatted()).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(18).presenceCard()
     }
 }
 

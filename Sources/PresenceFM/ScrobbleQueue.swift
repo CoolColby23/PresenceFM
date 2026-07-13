@@ -5,32 +5,43 @@ import SwiftData
 final class ScrobbleQueue {
     private let store: PersistenceStore
     private let client: any ScrobbleSubmitting
-    private let now: @Sendable () -> Date
+    private let clock: any AppClock
     private var processingTask: Task<Void, Never>?
     private var isProcessing = false
     var onStuck: ((String) -> Void)?
+    var onCapacity: ((String) -> Void)?
 
-    init(store: PersistenceStore, client: any ScrobbleSubmitting, now: @escaping @Sendable () -> Date = Date.init) {
+    init(store: PersistenceStore, client: any ScrobbleSubmitting, clock: any AppClock = SystemAppClock()) {
         self.store = store
         self.client = client
-        self.now = now
+        self.clock = clock
     }
 
-    func enqueue(_ session: PlaybackSession) { store.enqueue(session); Task { await process() } }
+    convenience init(store: PersistenceStore, client: any ScrobbleSubmitting, now: @escaping @Sendable () -> Date) {
+        self.init(store: store, client: client, clock: ClosureAppClock(now: now))
+    }
+
+    func enqueue(_ session: PlaybackSession) {
+        switch store.enqueue(session, now: clock.now) {
+        case .accepted: Task { await process() }
+        case .warning(let message), .rejected(let message): onCapacity?(message)
+        case .duplicate: break
+        }
+    }
 
     func start() {
         guard processingTask == nil else { return }
         processingTask = Task {
             while !Task.isCancelled {
                 await process()
-                try? await Task.sleep(for: .seconds(30))
+                try? await clock.sleep(until: clock.now.addingTimeInterval(IntegrationPolicy.scrobbleWorkerInterval))
             }
         }
     }
 
     func stop() { processingTask?.cancel(); processingTask = nil }
 
-    func retry(id: UUID) { if store.retryScrobble(id: id) { Task { await process() } } }
+    func retry(id: UUID) { if store.retryScrobble(id: id, now: clock.now) { Task { await process() } } }
     func remove(id: UUID) { store.removeScrobble(id: id) }
 
     func process() async {
@@ -42,7 +53,10 @@ final class ScrobbleQueue {
         isProcessing = true
         defer { isProcessing = false }
 
-        let now = now()
+        // A successful row remains observable until the next drain so the UI can
+        // render its terminal state before bounded cleanup removes it.
+        store.deleteSubmittedScrobbles()
+        let now = clock.now
         let descriptor = FetchDescriptor<ScrobbleRecord>(
             predicate: #Predicate { ($0.stateRaw == "pending" || $0.stateRaw == "retrying") && $0.nextAttemptAt <= now },
             sortBy: [SortDescriptor(\.startedAt)]
@@ -53,10 +67,12 @@ final class ScrobbleQueue {
             do {
                 try await client.scrobble(title: record.title, artist: record.artist, album: record.album,
                                            duration: record.duration, startedAt: record.startedAt)
-                record.state = .submitted; record.lastError = nil
+                record.state = .submitted
+                record.lastError = nil
             } catch let error as LastFMError {
                 record.attempts += 1; record.lastError = error.localizedDescription
-                if case .api(let code, _) = error, [4, 6, 7, 8, 9, 10, 13, 14, 15, 26].contains(code) { record.state = .permanentlyFailed }
+                if case .rejected = error { record.state = .permanentlyFailed }
+                else if case .api(let code, _) = error, [4, 6, 7, 8, 9, 10, 13, 14, 15, 26].contains(code) { record.state = .permanentlyFailed }
                 else {
                     record.state = .pending
                     let rateLimitDelay: TimeInterval = {
@@ -73,12 +89,12 @@ final class ScrobbleQueue {
                 record.nextAttemptAt = retryDate(attempts: record.attempts, from: now)
                 if record.attempts == 3 { onStuck?(record.title) }
             }
-            try? store.context.save()
+            store.save()
         }
     }
 
     func retryDate(attempts: Int, from date: Date) -> Date {
-        let delay = min(3600, pow(2, Double(min(max(attempts, 1), 11))) * 5)
+        let delay = min(IntegrationPolicy.scrobbleRetryMaximum, pow(2, Double(min(max(attempts, 1), 11))) * 5)
         return date.addingTimeInterval(delay)
     }
 }

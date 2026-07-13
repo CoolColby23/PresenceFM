@@ -1,123 +1,275 @@
 import Foundation
 import SwiftData
 
-@Model
-final class ActivityRecord {
-    @Attribute(.unique) var id: UUID
-    var title: String
-    var artist: String
-    var album: String?
-    var startedAt: Date
-    var outcomeRaw: String
-    var persistentID: String?
-    var duration: Double?
-    var listenedTime: Double?
-    @Attribute(.externalStorage) var artworkData: Data?
+enum QueueState: String, Codable, Sendable { case pending, retrying, permanentlyFailed, submitted }
 
-    init(session: PlaybackSession, artworkData: Data? = nil) {
-        id = session.id; title = session.track.title; artist = session.track.artist
-        album = session.track.album; startedAt = session.startedAt; outcomeRaw = session.outcome.rawValue
-        persistentID = session.track.identity.persistentID
-        duration = session.track.duration
-        listenedTime = session.accumulatedPlayTime
-        self.artworkData = artworkData
+enum PresenceFMSchemaV0: VersionedSchema {
+    static let versionIdentifier = Schema.Version(1, 0, 0)
+    static var models: [any PersistentModel.Type] {
+        [ActivityRecord.self, ScrobbleRecord.self, DiagnosticRecord.self]
     }
 
-    var outcomeLabel: String {
-        switch SessionOutcome(rawValue: outcomeRaw) {
-        case .played, .queued, .submitted: "Played"
-        case .skipped: "Skipped"
-        case .failed: "Failed"
-        case .active: "Playing"
-        case nil: outcomeRaw.capitalized
+    @Model final class ActivityRecord {
+        @Attribute(.unique) var id: UUID
+        var title: String
+        var artist: String
+        var album: String?
+        var startedAt: Date
+        var outcomeRaw: String
+        var persistentID: String?
+        var duration: Double?
+        var listenedTime: Double?
+        @Attribute(.externalStorage) var artworkData: Data?
+
+        init(
+            id: UUID, title: String, artist: String, album: String?, startedAt: Date,
+            outcomeRaw: String, persistentID: String?, duration: Double?, listenedTime: Double?
+        ) {
+            self.id = id; self.title = title; self.artist = artist; self.album = album
+            self.startedAt = startedAt; self.outcomeRaw = outcomeRaw; self.persistentID = persistentID
+            self.duration = duration; self.listenedTime = listenedTime
+        }
+    }
+
+    @Model final class ScrobbleRecord {
+        @Attribute(.unique) var id: UUID
+        @Attribute(.unique) var duplicateKey: String
+        var title: String
+        var artist: String
+        var album: String?
+        var startedAt: Date
+        var duration: Double
+        var attempts: Int
+        var nextAttemptAt: Date
+        var lastError: String?
+        var stateRaw: String
+
+        init(id: UUID, duplicateKey: String, title: String, artist: String, startedAt: Date, duration: Double) {
+            self.id = id; self.duplicateKey = duplicateKey; self.title = title; self.artist = artist
+            self.startedAt = startedAt; self.duration = duration; attempts = 0
+            nextAttemptAt = startedAt; stateRaw = QueueState.pending.rawValue
+        }
+    }
+
+    @Model final class DiagnosticRecord {
+        @Attribute(.unique) var id: UUID
+        var timestamp: Date
+        var category: String
+        var message: String
+        init(category: String, message: String) {
+            id = UUID(); timestamp = .now; self.category = category; self.message = message
         }
     }
 }
 
-enum QueueState: String, Codable, Sendable { case pending, retrying, permanentlyFailed, submitted }
-
-@Model
-final class ScrobbleRecord {
-    @Attribute(.unique) var id: UUID
-    @Attribute(.unique) var duplicateKey: String
-    var title: String
-    var artist: String
-    var album: String?
-    var startedAt: Date
-    var duration: Double
-    var attempts: Int
-    var nextAttemptAt: Date
-    var lastError: String?
-    var stateRaw: String
-
-    init(session: PlaybackSession) {
-        id = UUID(); duplicateKey = session.duplicateKey
-        title = session.track.title; artist = session.track.artist; album = session.track.album
-        startedAt = session.startedAt; duration = session.track.duration
-        attempts = 0; nextAttemptAt = .now; stateRaw = QueueState.pending.rawValue
+enum PresenceFMSchemaV1: VersionedSchema {
+    static let versionIdentifier = Schema.Version(2, 0, 0)
+    static var models: [any PersistentModel.Type] {
+        [ActivityRecord.self, ScrobbleRecord.self, DiagnosticRecord.self, IntegrationHealthEvent.self]
     }
 
-    var state: QueueState {
-        get { QueueState(rawValue: stateRaw) ?? .pending }
-        set { stateRaw = newValue.rawValue }
+    @Model final class ActivityRecord {
+        @Attribute(.unique) var id: UUID
+        var title: String
+        var artist: String
+        var album: String?
+        var startedAt: Date
+        var outcomeRaw: String
+        var persistentID: String?
+        var duration: Double?
+        var trackDuration: Double?
+        var listenedTime: Double?
+        var finalizedAt: Date?
+        var platformRaw: String?
+        @Attribute(.externalStorage) var artworkData: Data?
+
+        init(session: PlaybackSession, artworkData: Data? = nil) {
+            id = session.id; title = session.track.title; artist = session.track.artist
+            album = session.track.album; startedAt = session.startedAt; outcomeRaw = session.outcome.rawValue
+            persistentID = session.track.identity.persistentID
+            duration = session.track.duration; trackDuration = session.track.duration
+            listenedTime = session.accumulatedPlayTime; finalizedAt = .now
+            platformRaw = session.track.platform.rawValue; self.artworkData = artworkData
+        }
+
+        var outcomeLabel: String {
+            switch SessionOutcome(rawValue: outcomeRaw) {
+            case .played, .queued, .submitted: "Played"
+            case .skipped: "Skipped"
+            case .failed: "Failed"
+            case .active: "Playing"
+            case nil: outcomeRaw.capitalized
+            }
+        }
+    }
+
+    @Model final class ScrobbleRecord {
+        @Attribute(.unique) var id: UUID
+        @Attribute(.unique) var duplicateKey: String
+        var title: String
+        var artist: String
+        var album: String?
+        var startedAt: Date
+        var duration: Double
+        var attempts: Int
+        var nextAttemptAt: Date
+        var lastError: String?
+        var stateRaw: String
+
+        init(session: PlaybackSession, now: Date = .now) {
+            id = UUID(); duplicateKey = session.duplicateKey
+            title = session.track.title; artist = session.track.artist; album = session.track.album
+            startedAt = session.startedAt; duration = session.track.duration
+            attempts = 0; nextAttemptAt = now; stateRaw = QueueState.pending.rawValue
+        }
+
+        var state: QueueState {
+            get { QueueState(rawValue: stateRaw) ?? .pending }
+            set { stateRaw = newValue.rawValue }
+        }
+    }
+
+    @Model final class DiagnosticRecord {
+        @Attribute(.unique) var id: UUID
+        var timestamp: Date
+        var category: String
+        var message: String
+        init(category: String, message: String) {
+            id = UUID(); timestamp = .now; self.category = category; self.message = message
+        }
+    }
+
+    @Model final class IntegrationHealthEvent {
+        @Attribute(.unique) var id: UUID
+        var timestamp: Date
+        var integrationRaw: String
+        var stateRaw: String
+
+        init(integration: IntegrationID, state: IntegrationState, timestamp: Date = .now) {
+            id = UUID(); self.timestamp = timestamp
+            integrationRaw = integration.rawValue; stateRaw = state.rawValue
+        }
     }
 }
 
-@Model
-final class DiagnosticRecord {
-    @Attribute(.unique) var id: UUID
-    var timestamp: Date
-    var category: String
-    var message: String
-    init(category: String, message: String) {
-        id = UUID(); timestamp = .now; self.category = category; self.message = message
+typealias ActivityRecord = PresenceFMSchemaV1.ActivityRecord
+typealias ScrobbleRecord = PresenceFMSchemaV1.ScrobbleRecord
+typealias DiagnosticRecord = PresenceFMSchemaV1.DiagnosticRecord
+typealias IntegrationHealthEvent = PresenceFMSchemaV1.IntegrationHealthEvent
+
+enum PresenceFMMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] { [PresenceFMSchemaV0.self, PresenceFMSchemaV1.self] }
+    static var stages: [MigrationStage] {
+        [.lightweight(fromVersion: PresenceFMSchemaV0.self, toVersion: PresenceFMSchemaV1.self)]
     }
+}
+
+enum PersistenceError: LocalizedError {
+    case save(String)
+    case queueCapacity(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .save(let message): "Local data could not be saved: \(message)"
+        case .queueCapacity(let message): message
+        }
+    }
+}
+
+enum QueueAdmission: Equatable {
+    case accepted
+    case duplicate
+    case warning(String)
+    case rejected(String)
 }
 
 @MainActor
 final class PersistenceStore {
     let container: ModelContainer
+    let isInMemory: Bool
     var context: ModelContext { container.mainContext }
+    private(set) var lastError: PersistenceError?
+    var onError: ((PersistenceError) -> Void)?
 
-    init(inMemory: Bool = false) throws {
-        let schema = Schema([ActivityRecord.self, ScrobbleRecord.self, DiagnosticRecord.self])
-        container = try ModelContainer(for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: inMemory))
+    init(
+        inMemory: Bool = false,
+        storeURL: URL? = nil,
+        legacyStoreURL: URL? = nil
+    ) throws {
+        isInMemory = inMemory
+        let schema = Schema(versionedSchema: PresenceFMSchemaV1.self)
+        let resolvedStoreURL: URL?
+        let configuration: ModelConfiguration
+        if inMemory {
+            resolvedStoreURL = nil
+            configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        } else {
+            let resolved = try storeURL ?? PersistenceRecovery.defaultStoreURL()
+            let legacy = try legacyStoreURL ?? PersistenceRecovery.legacyStoreURL()
+            _ = try PersistenceRecovery.prepare(storeURL: resolved, legacyStoreURL: legacy)
+            resolvedStoreURL = resolved
+            configuration = ModelConfiguration("PresenceFM", schema: schema, url: resolved)
+        }
+        container = try ModelContainer(
+            for: schema,
+            migrationPlan: PresenceFMMigrationPlan.self,
+            configurations: configuration
+        )
+        if let resolvedStoreURL { try PersistenceRecovery.markMigrationSuccessful(storeURL: resolvedStoreURL) }
     }
 
     func record(_ session: PlaybackSession, artworkData: Data? = nil) {
         context.insert(ActivityRecord(session: session, artworkData: artworkData))
-        trim(ActivityRecord.self, limit: 5_000, sort: [SortDescriptor(\.startedAt, order: .reverse)])
+        trim(ActivityRecord.self, limit: IntegrationPolicy.activityRecordLimit, sort: [SortDescriptor(\.startedAt, order: .reverse)])
         removeActivity(olderThanDays: Preferences.shared.historyRetentionDays)
-        try? context.save()
+        save()
     }
 
     func clearActivity() {
         guard let records = try? context.fetch(FetchDescriptor<ActivityRecord>()) else { return }
         records.forEach(context.delete)
-        try? context.save()
+        save()
     }
 
     func applyHistoryRetention(days: Int) {
         removeActivity(olderThanDays: days)
-        try? context.save()
-    }
-
-    func enqueue(_ session: PlaybackSession) {
-        let key = session.duplicateKey
-        let descriptor = FetchDescriptor<ScrobbleRecord>(predicate: #Predicate { $0.duplicateKey == key })
-        guard (try? context.fetchCount(descriptor)) == 0 else { return }
-        context.insert(ScrobbleRecord(session: session)); try? context.save()
+        save()
     }
 
     @discardableResult
-    func retryScrobble(id: UUID) -> Bool {
+    func enqueue(_ session: PlaybackSession, now: Date = .now) -> QueueAdmission {
+        let key = session.duplicateKey
+        let descriptor = FetchDescriptor<ScrobbleRecord>(predicate: #Predicate { $0.duplicateKey == key })
+        guard (try? context.fetchCount(descriptor)) == 0 else { return .duplicate }
+
+        let all = (try? context.fetch(FetchDescriptor<ScrobbleRecord>())) ?? []
+        let pending = all.filter { $0.state == .pending || $0.state == .retrying }.count
+        let permanent = all.filter { $0.state == .permanentlyFailed }.count
+        if pending >= IntegrationPolicy.pendingQueueLimit {
+            return rejectQueue("Scrobble queue is full. Reconnect Last.fm or remove queued items before new listens can be queued.")
+        }
+        if permanent >= IntegrationPolicy.permanentQueueLimit {
+            return rejectQueue("Too many scrobbles need attention. Retry or remove failed items before new listens can be queued.")
+        }
+        context.insert(ScrobbleRecord(session: session, now: now)); save()
+        if pending + 1 == IntegrationPolicy.pendingQueueWarning {
+            return .warning("The offline scrobble queue is approaching its 5,000-item limit.")
+        }
+        if permanent == IntegrationPolicy.permanentQueueWarning {
+            return .warning("The failed scrobble queue is approaching its 500-item limit.")
+        }
+        return .accepted
+    }
+
+    @discardableResult
+    func retryScrobble(id: UUID, now: Date = .now) -> Bool {
         let descriptor = FetchDescriptor<ScrobbleRecord>(predicate: #Predicate { $0.id == id })
         guard let record = try? context.fetch(descriptor).first else { return false }
         record.state = .pending
         record.attempts = 0
-        record.nextAttemptAt = .now
+        record.nextAttemptAt = now
         record.lastError = nil
-        try? context.save()
+        save()
         return true
     }
 
@@ -125,12 +277,61 @@ final class PersistenceStore {
         let descriptor = FetchDescriptor<ScrobbleRecord>(predicate: #Predicate { $0.id == id })
         guard let record = try? context.fetch(descriptor).first else { return }
         context.delete(record)
-        try? context.save()
+        save()
     }
 
     func log(_ category: String, _ message: String) {
         context.insert(DiagnosticRecord(category: category, message: Redactor.redact(message)))
-        try? context.save()
+        trim(DiagnosticRecord.self, limit: IntegrationPolicy.diagnosticRecordLimit, sort: [SortDescriptor(\.timestamp, order: .reverse)])
+        save()
+    }
+
+    func recordHealth(_ integration: IntegrationID, state: IntegrationState, at timestamp: Date = .now) {
+        let integrationRaw = integration.rawValue
+        let descriptor = FetchDescriptor<IntegrationHealthEvent>(
+            predicate: #Predicate { $0.integrationRaw == integrationRaw },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        if let latest = try? context.fetch(descriptor).first,
+           latest.stateRaw == state.rawValue { return }
+        context.insert(IntegrationHealthEvent(integration: integration, state: state, timestamp: timestamp))
+        trim(IntegrationHealthEvent.self, limit: IntegrationPolicy.healthEventLimit, sort: [SortDescriptor(\.timestamp, order: .reverse)])
+        save()
+    }
+
+    func lastSuccessfulIntegrationDate(_ integration: IntegrationID) -> Date? {
+        let integrationRaw = integration.rawValue
+        let connected = IntegrationState.connected.rawValue
+        let descriptor = FetchDescriptor<IntegrationHealthEvent>(
+            predicate: #Predicate { $0.integrationRaw == integrationRaw && $0.stateRaw == connected },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        return try? context.fetch(descriptor).first?.timestamp
+    }
+
+    func deleteSubmittedScrobbles() {
+        let descriptor = FetchDescriptor<ScrobbleRecord>(predicate: #Predicate { $0.stateRaw == "submitted" })
+        guard let records = try? context.fetch(descriptor), !records.isEmpty else { return }
+        records.forEach(context.delete)
+        save()
+    }
+
+    func save() {
+        do {
+            try context.save()
+            lastError = nil
+        } catch {
+            let wrapped = PersistenceError.save(Redactor.redact(error.localizedDescription))
+            lastError = wrapped
+            onError?(wrapped)
+        }
+    }
+
+    private func rejectQueue(_ message: String) -> QueueAdmission {
+        let error = PersistenceError.queueCapacity(message)
+        lastError = error
+        onError?(error)
+        return .rejected(message)
     }
 
     private func trim<T: PersistentModel>(_ type: T.Type, limit: Int, sort: [SortDescriptor<T>]) {

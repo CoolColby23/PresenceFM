@@ -1,12 +1,12 @@
 # PresenceFM
 
-PresenceFM is a native macOS menu-bar app that reads the current Apple Music track, publishes optional Discord Rich Presence, and scrobbles qualified listens to Last.fm. It runs locally, starts private, and requires no PresenceFM account or backend.
+PresenceFM is a native macOS menu-bar app that reads the current Apple Music or Spotify track, publishes optional Discord Rich Presence, and scrobbles qualified listens to Last.fm. It runs locally, starts private, and requires no PresenceFM account or backend.
 
-## Highlights in 0.3.0
+## Highlights in 0.4.0
 
-- Private Listening History with search, filters, total listening time, top artists, and a seven-day activity chart.
-- CSV export plus configurable local retention and clear-history controls.
-- Rich Now Playing in both the dashboard and menu bar, with locally sourced album artwork, playback time, and Apple Music links.
+- Apple Music, Spotify, YouTube Music through YTMDesktop, and best-effort TIDAL playback detection.
+- Platform-aware Discord presentation with configurable lines, artwork, progress, badges, buttons, and links.
+- Stricter Last.fm response validation, reliable retry behavior, privacy-redacted support reports, and a branded DMG.
 
 Listening insights are calculated entirely on this Mac from PresenceFM's local activity records. They are never uploaded by PresenceFM.
 
@@ -24,14 +24,16 @@ Artwork is read from Apple Music and stored only in a bounded temporary cache. M
 
 - macOS 15 or later
 - Xcode 26 or later for source builds
-- Apple Music for playback detection
+- Apple Music or Spotify for automatic playback detection
+- YTMDesktop 2 with its local Companion Server for YouTube Music
+- TIDAL through macOS Now Playing metadata (best effort because TIDAL has no public macOS playback API)
 - Discord Desktop and/or a Last.fm account for optional integrations
 
 ## Install
 
-1. Download the `.zip` and `.sha256` files from GitHub Releases.
+1. Download the `.dmg` and `.sha256` files from GitHub Releases.
 2. Verify with `shasum -a 256 -c PresenceFM-*.sha256`.
-3. Unzip the app and move it to `/Applications`.
+3. Open the disk image and drag PresenceFM to Applications.
 4. Open PresenceFM. For an older unsigned release, Control-click PresenceFM and choose **Open**; if macOS still blocks it, approve it under **System Settings → Privacy & Security**.
 5. Approve Apple Music Automation access when prompted.
 
@@ -43,6 +45,7 @@ PresenceFM releases are ad-hoc signed because the project does not use a paid Ap
 swift build
 swift test
 ./scripts/package-app.sh
+./scripts/verify-package.sh
 open PresenceFM.app
 ```
 

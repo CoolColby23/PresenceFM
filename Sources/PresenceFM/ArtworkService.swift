@@ -6,15 +6,22 @@ actor ArtworkService {
     private let memoryLimit: Int
     private let diskLimit: Int
     private let directory: URL
+    private let clock: any AppClock
     private var memory: [String: Data] = [:]
     private var accessOrder: [String] = []
     private var catalogURLs: [String: URL] = [:]
     private var catalogMisses: Set<String> = []
 
-    init(memoryLimit: Int = 12, diskLimit: Int = 40, directory: URL? = nil) {
+    init(
+        memoryLimit: Int = IntegrationPolicy.artworkMemoryEntries,
+        diskLimit: Int = IntegrationPolicy.artworkDiskEntries,
+        directory: URL? = nil,
+        clock: any AppClock = SystemAppClock()
+    ) {
         self.memoryLimit = max(1, memoryLimit)
         self.diskLimit = max(1, diskLimit)
         self.directory = directory ?? FileManager.default.temporaryDirectory.appendingPathComponent("PresenceFM-Artwork", isDirectory: true)
+        self.clock = clock
     }
 
     func artwork(for track: TrackMetadata) async -> Data? {
@@ -28,13 +35,18 @@ actor ArtworkService {
             insert(data, key: key)
             return data
         }
+        if case .file(let sourceURL) = track.artworkReference,
+           sourceURL.isFileURL, let data = try? Data(contentsOf: sourceURL), Self.isImage(data) {
+            cache(data, for: track.identity)
+            return data
+        }
         var currentArtwork: Data?
         for attempt in 0..<4 {
             if let data = Self.readCurrentMusicArtwork(expectedPersistentID: track.identity.persistentID), Self.isImage(data) {
                 currentArtwork = data
                 break
             }
-            if attempt < 3 { try? await Task.sleep(for: .milliseconds(150)) }
+            if attempt < 3 { try? await clock.sleep(until: clock.now.addingTimeInterval(0.15)) }
         }
         guard let data = currentArtwork else { return nil }
         insert(data, key: key)
@@ -83,13 +95,10 @@ actor ArtworkService {
 
         do {
             var request = URLRequest(url: url)
-            request.timeoutInterval = 8
+            request.timeoutInterval = IntegrationPolicy.artworkTimeout
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let payload = try? JSONDecoder().decode(CatalogSearchResponse.self, from: data) else {
-                catalogMisses.insert(key)
-                return nil
-            }
+                  let payload = try? JSONDecoder().decode(CatalogSearchResponse.self, from: data) else { return nil }
             let match = payload.results.max { matchScore($0, track: track) < matchScore($1, track: track) }
             guard let match, matchScore(match, track: track) >= 4,
                   let result = upgradedArtworkURL(match.artworkUrl100) else {
@@ -98,19 +107,16 @@ actor ArtworkService {
             }
             catalogURLs[key] = result
             return result
-        } catch {
-            catalogMisses.insert(key)
-            return nil
-        }
+        } catch { return nil }
     }
 
     func downloadedArtwork(from url: URL, for identity: TrackIdentity) async -> Data? {
         do {
             var request = URLRequest(url: url)
-            request.timeoutInterval = 8
+            request.timeoutInterval = IntegrationPolicy.artworkTimeout
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  data.count <= 12_000_000, Self.isImage(data) else { return nil }
+                  data.count <= IntegrationPolicy.artworkDownloadLimit, Self.isImage(data) else { return nil }
             return cache(data, for: identity) ? data : nil
         } catch {
             return nil

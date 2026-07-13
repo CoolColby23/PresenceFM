@@ -24,24 +24,28 @@ jobs:
           PRESENCEFM_SIGNING_IDENTITY: "-"
         run: |
           PRESENCEFM_VERSION="${PRESENCEFM_VERSION#v}" ./scripts/package-app.sh
-      - name: Create release archive
+      - name: Verify app bundle
+        env:
+          PRESENCEFM_VERSION: ${{ github.ref_name }}
+          PRESENCEFM_BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          PRESENCEFM_VERSION="${PRESENCEFM_VERSION#v}" ./scripts/verify-package.sh
+      - name: Create DMG
         env:
           PRESENCEFM_VERSION: ${{ github.ref_name }}
         run: |
           PRESENCEFM_VERSION="${PRESENCEFM_VERSION#v}"
-          # Resource-fork metadata is unnecessary for this bundle and otherwise
-          # creates noisy AppleDouble entries in the downloadable archive.
-          ditto -c -k --norsrc --keepParent PresenceFM.app "PresenceFM-${PRESENCEFM_VERSION}.zip"
+          ./scripts/create-dmg.sh "${PRESENCEFM_VERSION}"
       - name: Create checksum
         env:
           PRESENCEFM_VERSION: ${{ github.ref_name }}
         run: |
           PRESENCEFM_VERSION="${PRESENCEFM_VERSION#v}"
-          shasum -a 256 "PresenceFM-${PRESENCEFM_VERSION}.zip" > "PresenceFM-${PRESENCEFM_VERSION}.sha256"
+          shasum -a 256 "PresenceFM-${PRESENCEFM_VERSION}.dmg" > "PresenceFM-${PRESENCEFM_VERSION}.sha256"
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
           generate_release_notes: true
           files: |
-            PresenceFM-*.zip
+            PresenceFM-*.dmg
             PresenceFM-*.sha256

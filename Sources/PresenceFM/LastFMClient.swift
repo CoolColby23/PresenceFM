@@ -2,13 +2,13 @@ import CryptoKit
 import Foundation
 
 enum LastFMError: LocalizedError {
-    case missingCredentials, unauthenticated, invalidResponse, api(Int, String), transport(String)
+    case missingCredentials, unauthenticated, invalidResponse, rejected(String), api(Int, String), transport(String)
     var errorDescription: String? {
         switch self {
         case .missingCredentials: "Enter a Last.fm API key and shared secret."
         case .unauthenticated: "Connect your Last.fm account."
         case .invalidResponse: "Last.fm returned an invalid response."
-        case .api(_, let message), .transport(let message): message
+        case .rejected(let message), .api(_, let message), .transport(let message): message
         }
     }
 }
@@ -16,10 +16,11 @@ enum LastFMError: LocalizedError {
 actor LastFMClient: Scrobbling, ScrobbleSubmitting {
     private let credentialsStore: CredentialStore
     private let session: URLSession
+    private let clock: any AppClock
     private var earliestRequestAt = Date.distantPast
 
-    init(credentials: CredentialStore, session: URLSession = .shared) {
-        self.credentialsStore = credentials; self.session = session
+    init(credentials: CredentialStore, session: URLSession = .shared, clock: any AppClock = SystemAppClock()) {
+        self.credentialsStore = credentials; self.session = session; self.clock = clock
     }
 
     func beginAuthorization() async throws -> URL {
@@ -29,13 +30,15 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
               let url = URL(string: "https://www.last.fm/api/auth/?api_key=\(credentials.key)&token=\(token)") else {
             throw LastFMError.invalidResponse
         }
-        try await credentialsStore.set(token, for: .lastFMSessionKey)
+        // The short-lived authorization token is not a session key. Keeping the
+        // values separate prevents reconnecting from destroying a working session.
+        try await credentialsStore.set(token, for: .lastFMAuthToken)
         return url
     }
 
     func completeAuthorization() async throws -> String {
         let credentials = try await credentials(requireSession: false)
-        guard let token = await credentialsStore.value(for: .lastFMSessionKey) else { throw LastFMError.unauthenticated }
+        guard let token = await credentialsStore.value(for: .lastFMAuthToken) else { throw LastFMError.unauthenticated }
         let response = try await call(method: "auth.getSession", parameters: ["token": token], signed: true, sessionKey: nil, credentials: credentials)
         guard let sessionObject = response["session"] as? [String: Any],
               let key = sessionObject["key"] as? String, let name = sessionObject["name"] as? String else {
@@ -43,6 +46,7 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
         }
         try await credentialsStore.set(key, for: .lastFMSessionKey)
         try await credentialsStore.set(name, for: .lastFMUsername)
+        try await credentialsStore.remove(.lastFMAuthToken)
         return name
     }
 
@@ -61,8 +65,9 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
         var values = ["track": title, "artist": artist, "duration": String(Int(duration)),
                       "timestamp": String(Int(startedAt.timeIntervalSince1970))]
         if let album, !album.isEmpty { values["album"] = album }
-        _ = try await call(method: "track.scrobble", parameters: values, signed: true,
-                           sessionKey: credentials.sessionKey, credentials: credentials)
+        let response = try await call(method: "track.scrobble", parameters: values, signed: true,
+                                      sessionKey: credentials.sessionKey, credentials: credentials)
+        try Self.validateScrobbleResponse(response)
     }
 
     private struct Credentials { let key: String; let secret: String; let sessionKey: String? }
@@ -87,33 +92,33 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
         // Reserve the request slot before suspending. Actors are reentrant, so merely
         // sleeping until earliestRequestAt lets every waiting call wake together and
         // send a burst that Last.fm rejects with error 29.
-        let now = Date()
+        let now = clock.now
         let requestAt = max(now, earliestRequestAt)
         earliestRequestAt = requestAt.addingTimeInterval(0.35)
         let delay = requestAt.timeIntervalSince(now)
-        if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
-        var values = parameters
-        values["method"] = method; values["api_key"] = credentials.key
-        if let sessionKey { values["sk"] = sessionKey }
-        if signed { values["api_sig"] = Self.signature(values, secret: credentials.secret) }
-        values["format"] = "json"
+        if delay > 0 { try await clock.sleep(until: requestAt) }
+        let values = Self.requestValues(
+            method: method, parameters: parameters, apiKey: credentials.key,
+            secret: credentials.secret, sessionKey: sessionKey, signed: signed
+        )
         var request = URLRequest(url: URL(string: "https://ws.audioscrobbler.com/2.0/")!)
-        request.httpMethod = "POST"; request.timeoutInterval = 20
+        request.httpMethod = "POST"; request.timeoutInterval = IntegrationPolicy.lastFMTimeout
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = values.sorted { $0.key < $1.key }.map { "\($0.key.formEncoded)=\($0.value.formEncoded)" }.joined(separator: "&").data(using: .utf8)
+        request.httpBody = Self.encodedBody(values)
         do {
             let (data, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, http.statusCode == 429 {
                 let retryAfter = TimeInterval(http.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 30
-                earliestRequestAt = Date().addingTimeInterval(max(5, retryAfter))
+                earliestRequestAt = clock.now.addingTimeInterval(max(5, retryAfter))
                 throw LastFMError.api(29, "Last.fm is busy. PresenceFM will retry automatically.")
             }
             if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                 throw LastFMError.transport("Last.fm returned HTTP \(http.statusCode).")
             }
             guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw LastFMError.invalidResponse }
-            if let code = object["error"] as? Int {
-                if code == 29 { earliestRequestAt = Date().addingTimeInterval(30) }
+            let code = (object["error"] as? Int) ?? (object["error"] as? String).flatMap(Int.init)
+            if let code {
+                if code == 29 { earliestRequestAt = clock.now.addingTimeInterval(30) }
                 throw LastFMError.api(code, object["message"] as? String ?? "Last.fm error \(code)")
             }
             return object
@@ -125,6 +130,40 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
         let material = parameters.filter { $0.key != "format" && $0.key != "callback" }
             .sorted { $0.key < $1.key }.map { $0.key + $0.value }.joined() + secret
         return Insecure.MD5.hash(data: Data(material.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func requestValues(
+        method: String, parameters: [String: String], apiKey: String, secret: String,
+        sessionKey: String?, signed: Bool
+    ) -> [String: String] {
+        var values = parameters
+        values["method"] = method
+        values["api_key"] = apiKey
+        if let sessionKey { values["sk"] = sessionKey }
+        if signed { values["api_sig"] = signature(values, secret: secret) }
+        values["format"] = "json"
+        return values
+    }
+
+    static func encodedBody(_ values: [String: String]) -> Data {
+        values.sorted { $0.key < $1.key }
+            .map { "\($0.key.formEncoded)=\($0.value.formEncoded)" }
+            .joined(separator: "&").data(using: .utf8) ?? Data()
+    }
+
+    static func validateScrobbleResponse(_ response: [String: Any]) throws {
+        guard let scrobbles = response["scrobbles"] as? [String: Any],
+              let attributes = scrobbles["@attr"] as? [String: Any] else {
+            throw LastFMError.invalidResponse
+        }
+        let accepted: Int? = {
+            if let value = attributes["accepted"] as? String { return Int(value) }
+            return attributes["accepted"] as? Int
+        }()
+        guard accepted == 1 else {
+            let ignoredMessage = ((scrobbles["scrobble"] as? [String: Any])?["ignoredMessage"] as? [String: Any])?["#text"] as? String
+            throw LastFMError.rejected(ignoredMessage?.isEmpty == false ? ignoredMessage! : "Last.fm did not accept the scrobble.")
+        }
     }
 }
 

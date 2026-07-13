@@ -1,4 +1,4 @@
-# Public v0.3 Manual QA
+# PresenceFM Release Manual QA
 
 Record the app version, macOS version, and pass/fail evidence for every item. Do not attach secrets or unredacted personal paths.
 
@@ -10,6 +10,15 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 - Seek forward and backward, pause for several minutes, change tracks, quit Music, and relaunch PresenceFM. Confirm listening time and recent activity remain credible.
 - Confirm album artwork appears without delaying metadata updates, changes with the track, and falls back to the PresenceFM mark when unavailable.
 - Confirm elapsed/remaining playback time and scrobble eligibility progress remain correct while playing, paused, and seeking.
+
+## Spotify, YouTube Music, and TIDAL
+
+- With Apple Music stopped, verify Spotify play, pause, seek, skip, app quit, and relaunch behavior, including platform-aware links and Discord branding.
+- Enable YTMDesktop 2's Companion Server and authorization, connect from PresenceFM, and verify play, pause, seek, skip, token rejection, disconnect, and reconnect behavior.
+- Verify YouTube Music live streams are visible but never scrobbled.
+- Verify TIDAL playback through macOS Now Playing for play, pause, seek, skip, app quit, sleep/wake, and relaunch. Record the macOS and TIDAL versions because this provider uses a best-effort system metadata surface.
+- Play from two providers simultaneously and verify PresenceFM selects one deterministically, changes source without duplicate activity, and recovers when the selected provider closes.
+- Confirm a permission or metadata failure in one provider does not hide valid playback from another.
 
 ## Discord
 

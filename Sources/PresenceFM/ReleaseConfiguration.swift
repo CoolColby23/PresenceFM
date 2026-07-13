@@ -1,8 +1,12 @@
 import Foundation
 
 enum ReleaseConfiguration {
-    static let version = "0.3.0"
-    static let build = "3"
+    static var version: String {
+        bundledValue(named: "CFBundleShortVersionString", fallback: "0.4.0")
+    }
+    static var build: String {
+        bundledValue(named: "CFBundleVersion", fallback: "1")
+    }
 
     static let discordApplicationID = bundledValue(
         named: "PRESENCEFM_DISCORD_APPLICATION_ID",

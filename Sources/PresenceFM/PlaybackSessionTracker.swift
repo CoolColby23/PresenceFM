@@ -22,7 +22,9 @@ actor PlaybackSessionTracker {
             return [.none]
         }
         guard let track = snapshot.track else {
-            if let finalized = finalize(as: .skipped) { events.append(.finalized(finalized)) }
+            if let finalized = finalize(as: active?.eligibility == .eligible ? .played : .skipped) {
+                events.append(.finalized(finalized))
+            }
             lastObservedAt = snapshot.observedAt
             lastState = snapshot.state
             return events.isEmpty ? [.none] : events

@@ -3,10 +3,11 @@ set -euo pipefail
 
 ROOT="${0:A:h:h}"
 cd "$ROOT"
+"$ROOT/scripts/sync-brand-assets.sh"
 swift build -c release
 
-VERSION="${PRESENCEFM_VERSION:-0.3.0}"
-BUILD_NUMBER="${PRESENCEFM_BUILD_NUMBER:-3}"
+VERSION="${PRESENCEFM_VERSION:-0.4.0}"
+BUILD_NUMBER="${PRESENCEFM_BUILD_NUMBER:-1}"
 DISCORD_APPLICATION_ID="${PRESENCEFM_DISCORD_APPLICATION_ID:-1525555974390153346}"
 
 APP="$ROOT/PresenceFM.app"
@@ -14,7 +15,11 @@ CONTENTS="$APP/Contents"
 rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$ROOT/.build/release/PresenceFM" "$CONTENTS/MacOS/PresenceFM"
-cp "$ROOT/Sources/PresenceFM/Resources/Brand/PresenceFM.icns" "$CONTENTS/Resources/PresenceFM.icns"
+cp "$ROOT/brand/PresenceFM.icns" "$CONTENTS/Resources/PresenceFM.icns"
+RESOURCE_BUNDLE="$ROOT/.build/release/PresenceFM_PresenceFM.bundle"
+if [[ -d "$RESOURCE_BUNDLE" ]]; then
+  cp -R "$RESOURCE_BUNDLE" "$CONTENTS/Resources/PresenceFM_PresenceFM.bundle"
+fi
 
 plutil -create xml1 "$CONTENTS/Info.plist"
 plutil -insert CFBundleName -string PresenceFM "$CONTENTS/Info.plist"

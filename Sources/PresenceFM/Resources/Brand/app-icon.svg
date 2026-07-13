@@ -1,1 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none"><defs><linearGradient id="bg" x1="72" y1="48" x2="936" y2="976" gradientUnits="userSpaceOnUse"><stop stop-color="#07142F"/><stop offset=".42" stop-color="#123FD0"/><stop offset=".76" stop-color="#6522D8"/><stop offset="1" stop-color="#E0229F"/></linearGradient><linearGradient id="ink" x1="198" y1="512" x2="826" y2="512" gradientUnits="userSpaceOnUse"><stop stop-color="#63EDFF"/><stop offset=".48" stop-color="#FFFFFF"/><stop offset="1" stop-color="#FFD2F2"/></linearGradient><filter id="glow" x="80" y="80" width="864" height="864" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="30"/></filter></defs><rect x="32" y="32" width="960" height="960" rx="224" fill="url(#bg)"/><circle cx="512" cy="512" r="322" stroke="#75E9FF" stroke-opacity=".2" stroke-width="4"/><path d="M690 720A300 300 0 1 1 690 304M198 512h144l66-100 66 218 78-274 66 156h208" stroke="#74E9FF" stroke-opacity=".4" stroke-width="94" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/><path d="M690 720A300 300 0 1 1 690 304M198 512h144l66-100 66 218 78-274 66 156h208" stroke="url(#ink)" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <linearGradient id="disc" x1="270" y1="270" x2="754" y2="754" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#14D9FF"/>
+      <stop offset="1" stop-color="#1F66FF"/>
+    </linearGradient>
+    <mask id="hole">
+      <rect x="0" y="0" width="1024" height="1024" fill="#fff"/>
+      <circle cx="512" cy="512" r="110" fill="#000"/>
+    </mask>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="#07142F"/>
+  <g mask="url(#hole)">
+    <circle cx="512" cy="512" r="320" fill="url(#disc)"/>
+    <circle cx="512" cy="512" r="320" fill="none" stroke="#F7F9FF" stroke-opacity=".28" stroke-width="10"/>
+    <path d="M290 364A320 320 0 0 1 659 229" stroke="#F7F9FF" stroke-opacity=".55" stroke-width="24" stroke-linecap="round"/>
+  </g>
+  <circle cx="512" cy="512" r="118" fill="none" stroke="#F7F9FF" stroke-opacity=".18" stroke-width="8"/>
+</svg>

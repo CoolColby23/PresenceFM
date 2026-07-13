@@ -11,6 +11,12 @@ struct DashboardView: View {
                 Label(section.rawValue, systemImage: section.symbol).tag(section)
             }
             .navigationTitle("PresenceFM")
+            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
+            .safeAreaInset(edge: .bottom) {
+                SidebarPrivacyControl()
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+            }
         } detail: {
             Group {
                 switch model.selectedSection {
@@ -24,6 +30,11 @@ struct DashboardView: View {
         }
         .task { model.start() }
         .sheet(isPresented: $model.onboardingPresented) { OnboardingView().environment(model) }
+        .safeAreaInset(edge: .top) {
+            if let issue = model.persistenceIssue {
+                PersistenceRecoveryBanner(message: issue)
+            }
+        }
     }
 }
 
@@ -31,7 +42,7 @@ struct NowPlayingView: View {
     @Environment(AppModel.self) private var model
     var body: some View {
         ScrollView {
-            VStack(spacing: 28) {
+            VStack(spacing: 30) {
                 HStack(alignment: .center, spacing: 34) {
                     ArtworkView(data: model.artworkData, size: 260)
                     VStack(alignment: .leading, spacing: 14) {
@@ -43,20 +54,48 @@ struct NowPlayingView: View {
                             PlaybackProgress(position: model.snapshot.position, duration: track.duration)
                             ScrobbleProgress(state: model.scrobblePresentation)
                             if let url = track.appleMusicURL {
-                                Link("Open in Apple Music", destination: url).presenceButton()
+                                Link("Open in \(track.platform.rawValue)", destination: url).presenceButton()
                             }
                         } else {
-                            Text("Start a song in Apple Music to share what you’re listening to.")
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Play something in a supported music app and PresenceFM will pick it up automatically.")
+                                Text("Apple Music · Spotify · YouTube Music · TIDAL")
+                                    .font(.callout.weight(.medium))
+                            }
+                            .foregroundStyle(.secondary)
                         }
                     }.frame(maxWidth: 520, alignment: .leading)
                 }
-                HStack(spacing: 12) {
-                    StatusCapsule(title: "Apple Music", status: model.musicStatus)
-                    StatusCapsule(title: "Discord", status: model.discordStatus)
-                    StatusCapsule(title: "Last.fm", status: model.lastFMStatus)
+                Divider()
+                VStack(spacing: 0) {
+                    ServiceHealthRow(
+                        title: model.playbackServiceName,
+                        detail: "Playback detection",
+                        symbol: "music.note",
+                        status: model.musicStatus,
+                        recoveryTitle: model.musicStatus == .awaitingPermission ? "Open Settings" : nil,
+                        recoveryAction: model.openAutomationSettings
+                    )
+                    Divider()
+                    ServiceHealthRow(
+                        title: "Discord",
+                        detail: "Rich Presence",
+                        symbol: "bubble.left.and.bubble.right",
+                        status: model.discordStatus,
+                        recoveryTitle: discordRecoveryTitle,
+                        recoveryAction: model.refreshDiscord
+                    )
+                    Divider()
+                    ServiceHealthRow(
+                        title: "Last.fm",
+                        detail: "Scrobbling",
+                        symbol: "dot.radiowaves.left.and.right",
+                        status: model.lastFMStatus,
+                        recoveryTitle: lastFMRecoveryTitle,
+                        recoveryAction: { model.selectedSection = .settings }
+                    )
                 }
-                PrivacyControls()
+                .frame(maxWidth: 820)
             }.padding(36).frame(maxWidth: .infinity)
         }.navigationTitle("Now Playing")
     }
@@ -66,8 +105,18 @@ struct NowPlayingView: View {
     }
 
     private var metadataLabel: String {
-        guard let track = model.snapshot.track else { return "Apple Music" }
+        guard let track = model.snapshot.track else { return "Waiting for playback" }
         return "\(track.artist)\(track.album.map { " • \($0)" } ?? "")"
+    }
+
+    private var discordRecoveryTitle: String? {
+        guard model.preferences.discordEnabled else { return nil }
+        return model.discordStatus.isConnected || model.discordStatus == .connecting ? nil : "Reconnect"
+    }
+
+    private var lastFMRecoveryTitle: String? {
+        guard model.preferences.lastFMEnabled else { return nil }
+        return model.lastFMStatus.isConnected || model.lastFMStatus == .connecting ? nil : "Review Settings"
     }
 }
 
@@ -120,7 +169,7 @@ struct ScrobbleProgress: View {
                     if case .listening(_, let remaining) = state { Text("\(remaining.formattedDuration) to go").font(.caption).foregroundStyle(.secondary) }
                 }
                 switch state {
-                case .listening(let progress, _): ProgressView(value: progress).tint(BrandColors.magenta)
+                case .listening(let progress, _): ProgressView(value: progress).tint(BrandColors.electricBlue)
                 case .ineligible(let reason): Text(reason).font(.caption).foregroundStyle(.secondary)
                 default: EmptyView()
                 }
@@ -139,6 +188,79 @@ struct StatusCapsule: View {
         Label("\(title): \(status.label)", systemImage: status.isConnected ? "checkmark.circle.fill" : "circle.dashed")
             .font(.caption.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 8)
             .presenceCard(capsule: true)
+    }
+}
+
+struct ServiceHealthRow: View {
+    let title: String
+    let detail: String
+    let symbol: String
+    let status: ServiceStatus
+    let recoveryTitle: String?
+    let recoveryAction: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.title3)
+                .foregroundStyle(BrandColors.electricBlue)
+                .frame(width: 28)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text(status.label)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if let recoveryTitle {
+                Button(recoveryTitle, action: recoveryAction)
+            }
+        }
+        .padding(.vertical, 14)
+        .contentShape(.rect)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(status.label)")
+    }
+
+    private var statusColor: Color {
+        switch status {
+        case .connected: BrandColors.success
+        case .connecting: BrandColors.warning
+        case .awaitingPermission, .authorizationExpired: BrandColors.warning
+        case .failed: BrandColors.error
+        case .disabled, .offline: BrandColors.neutral
+        }
+    }
+}
+
+struct SidebarPrivacyControl: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(model.isPrivate ? "Private Mode is on" : "Go Private", systemImage: model.isPrivate ? "eye.slash.fill" : "eye.slash")
+                .font(.headline)
+            Text(model.isPrivate ? privateDetail : "Pause Discord sharing and Last.fm updates at any time.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            PrivacyControls()
+        }
+        .padding(.top, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private var privateDetail: String {
+        if let until = model.privateUntil { return "Sharing is paused until \(until.formatted(date: .omitted, time: .shortened))." }
+        return "Sharing and scrobbling are paused until you resume them."
     }
 }
 
@@ -161,6 +283,9 @@ struct PrivacyControls: View {
                 }.presenceButton()
             }
         }
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(model.isPrivate ? "Private Mode controls" : "Privacy controls")
     }
 }
 
@@ -173,7 +298,7 @@ struct MenuBarView: View {
                 ArtworkView(data: model.artworkData, size: 68)
                 VStack(alignment: .leading) {
                     Text(model.snapshot.track?.title ?? "Nothing Playing").font(.headline).lineLimit(1)
-                    Text(model.snapshot.track?.artist ?? "Apple Music").foregroundStyle(.secondary).lineLimit(1)
+                    Text(model.snapshot.track?.artist ?? "Choose a connected music app").foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             if let track = model.snapshot.track {
@@ -181,7 +306,7 @@ struct MenuBarView: View {
                 ScrobbleProgress(state: model.scrobblePresentation)
             }
             VStack(spacing: 8) {
-                CompactStatus(name: "Apple Music", status: model.musicStatus)
+                CompactStatus(name: model.playbackServiceName, status: model.musicStatus)
                 CompactStatus(name: "Discord", status: model.discordStatus)
                 CompactStatus(name: "Last.fm", status: model.lastFMStatus)
             }
@@ -200,8 +325,10 @@ struct MenuBarView: View {
 struct CompactStatus: View {
     let name: String; let status: ServiceStatus
     var body: some View {
-        HStack { Circle().fill(status.isConnected ? .green : .secondary).frame(width: 7, height: 7); Text(name); Spacer(); Text(status.label).foregroundStyle(.secondary) }
+        HStack { Circle().fill(status.isConnected ? BrandColors.success : BrandColors.neutral).frame(width: 7, height: 7); Text(name); Spacer(); Text(status.label).foregroundStyle(.secondary) }
             .font(.caption)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(name), \(status.label)")
     }
 }
 
@@ -241,32 +368,159 @@ struct QueueView: View {
     @Environment(AppModel.self) private var model
     @Query(sort: \ScrobbleRecord.startedAt, order: .reverse) private var records: [ScrobbleRecord]
     var body: some View {
-        List {
-            ForEach(records.filter { $0.state != .submitted }) { record in
-                HStack { VStack(alignment: .leading) { Text(record.title).font(.headline); Text(record.artist).foregroundStyle(.secondary); if let error = record.lastError { Text(error).font(.caption).foregroundStyle(.red) } }; Spacer(); Text(record.stateRaw.queueDisplayName) }
+        VStack(spacing: 0) {
+            if let commonError {
+                QueueRecoveryBanner(
+                    count: queuedRecords.count,
+                    message: commonError,
+                    action: { model.selectedSection = .settings }
+                )
+                Divider()
+            }
+            List {
+                ForEach(queuedRecords) { record in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(record.title).font(.headline)
+                            Text(record.artist).foregroundStyle(.secondary)
+                            if let error = record.lastError, error != commonError {
+                                Text(error).font(.caption).foregroundStyle(BrandColors.error)
+                            }
+                        }
+                        Spacer()
+                        Text(record.stateRaw.queueDisplayName).foregroundStyle(.secondary)
+                        Menu("Actions", systemImage: "ellipsis.circle") {
+                            if record.state == .permanentlyFailed { Button("Retry") { model.retryScrobble(id: record.id) } }
+                            Button("Remove", role: .destructive) { model.removeScrobble(id: record.id) }
+                        }
+                        .menuIndicator(.hidden)
+                        .accessibilityLabel("Actions for \(record.title)")
+                    }
                     .contextMenu {
                         if record.state == .permanentlyFailed { Button("Retry") { model.retryScrobble(id: record.id) } }
                         Button("Remove", role: .destructive) { model.removeScrobble(id: record.id) }
                     }
+                }
             }
-        }.navigationTitle("Scrobble Queue").overlay { if records.allSatisfy({ $0.state == .submitted }) { ContentUnavailableView("Queue Is Clear", systemImage: "checkmark.circle", description: Text("Offline scrobbles will wait here.")) } }
+        }
+        .navigationTitle("Scrobble Queue")
+        .overlay {
+            if queuedRecords.isEmpty {
+                ContentUnavailableView("Queue Is Clear", systemImage: "checkmark.circle", description: Text("Offline scrobbles will wait here."))
+            }
+        }
+    }
+
+    private var queuedRecords: [ScrobbleRecord] { records.filter { $0.state != .submitted } }
+
+    private var commonError: String? {
+        let errors = queuedRecords.compactMap(\.lastError)
+        guard let first = errors.first, errors.count == queuedRecords.count, errors.allSatisfy({ $0 == first }) else { return nil }
+        return first
+    }
+}
+
+private struct QueueRecoveryBanner: View {
+    let count: Int
+    let message: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(BrandColors.warning)
+                .font(.title2)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(count) \(count == 1 ? "scrobble needs" : "scrobbles need") attention")
+                    .font(.headline)
+                Text(message).font(.callout).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Review Last.fm Settings", action: action)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(BrandColors.warning.opacity(0.08))
+        .accessibilityElement(children: .contain)
     }
 }
 
 struct DiagnosticsView: View {
     @Environment(AppModel.self) private var model
     @Query(sort: \DiagnosticRecord.timestamp, order: .reverse) private var records: [DiagnosticRecord]
+    @Query(sort: \IntegrationHealthEvent.timestamp, order: .reverse) private var healthEvents: [IntegrationHealthEvent]
     var body: some View {
         Form {
             Section("System") { LabeledContent("macOS", value: ProcessInfo.processInfo.operatingSystemVersionString); LabeledContent("App Version", value: ReleaseConfiguration.version) }
-            Section("Services") { LabeledContent("Apple Music", value: model.musicStatus.label); LabeledContent("Discord", value: model.discordStatus.label); LabeledContent("Last.fm", value: model.lastFMStatus.label) }
+            Section("Services") {
+                ForEach(model.integrationHealth) { health in
+                    LabeledContent(health.integration.displayName, value: health.summary)
+                        .accessibilityLabel("\(health.integration.displayName), \(health.summary)")
+                }
+            }
             Section("Recovery") {
                 if model.musicStatus == .awaitingPermission { Button("Open Automation Privacy Settings") { model.openAutomationSettings() } }
                 if model.preferences.discordEnabled { Button("Reconnect to Discord") { model.refreshDiscord() } }
                 if model.lastFMStatus == .authorizationExpired { Button("Reconnect Last.fm") { model.selectedSection = .settings } }
             }
+            Section("Support Report") {
+                Button("Copy Redacted Support Report", systemImage: "doc.on.doc") { model.copyDiagnosticReport() }
+                Text(model.diagnosticCopyStatus.isEmpty ? "Includes app, macOS, connection status, and the latest redacted diagnostic messages. It excludes credentials and listening metadata." : model.diagnosticCopyStatus)
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Redacted Log") { ForEach(records.prefix(50)) { record in Text("[\(record.category)] \(record.message)").font(.caption.monospaced()) } }
+            Section("Local Integration Health") {
+                if healthEvents.isEmpty { Text("No integration state changes recorded yet.").foregroundStyle(.secondary) }
+                ForEach(healthEvents.prefix(50)) { event in
+                    HStack {
+                        Text(IntegrationID(rawValue: event.integrationRaw)?.displayName ?? "Integration")
+                        Spacer()
+                        Text(IntegrationState(rawValue: event.stateRaw)?.rawValue.capitalized ?? event.stateRaw.capitalized)
+                        Text(event.timestamp, style: .relative).foregroundStyle(.secondary)
+                    }.font(.caption)
+                }
+                Text("This bounded local history stores only integration state and timestamps—never track metadata, usernames, or credentials.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }.formStyle(.grouped).navigationTitle("Diagnostics")
+    }
+}
+
+private struct PersistenceRecoveryBanner: View {
+    @Environment(AppModel.self) private var model
+    let message: String
+    @State private var confirmingEmptySession = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "externaldrive.badge.exclamationmark").foregroundStyle(BrandColors.warning)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Local data needs recovery").font(.headline)
+                Text(message).font(.caption).lineLimit(3)
+            }
+            Spacer()
+            if model.usingTemporaryStore {
+                Button("Restore Database Backup") { model.restoreLatestDatabaseBackup() }
+                Button("Start Fresh…") { confirmingEmptySession = true }
+                Button("Restart PresenceFM") { model.restartApplication() }
+            } else {
+                Button("Open Data Settings") { model.selectedSection = .settings }
+                Button("Dismiss") { model.persistenceIssue = nil }
+            }
+        }
+        .padding(12).background(.bar)
+        .accessibilityElement(children: .contain)
+        .overlay(alignment: .bottomLeading) {
+            if !model.persistenceRecoveryStatus.isEmpty {
+                Text(model.persistenceRecoveryStatus).font(.caption).foregroundStyle(.secondary).padding(.leading, 42).offset(y: 11)
+            }
+        }
+        .confirmationDialog("Start with a new local database?", isPresented: $confirmingEmptySession, titleVisibility: .visible) {
+            Button("Preserve Failed Store and Start Fresh", role: .destructive) { model.prepareFreshDatabase() }
+        } message: {
+            Text("PresenceFM will move the failed database into a recovery folder and create a new store after restart. It will not delete the failed data.")
+        }
     }
 }
 

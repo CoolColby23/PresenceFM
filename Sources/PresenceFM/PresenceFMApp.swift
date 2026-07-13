@@ -9,8 +9,20 @@ struct PresenceFMApp: App {
     @State private var model: AppModel
 
     init() {
-        let store = try! PersistenceStore()
-        _model = State(initialValue: AppModel(store: store))
+        do {
+            let store = try PersistenceStore()
+            _model = State(initialValue: AppModel(store: store))
+        } catch {
+            do {
+                let store = try PersistenceStore(inMemory: true)
+                let fallback = AppModel(store: store)
+                fallback.usingTemporaryStore = true
+                fallback.persistenceIssue = "PresenceFM could not open its local database. It is running with temporary data so the original store remains untouched. \(Redactor.redact(error.localizedDescription))"
+                _model = State(initialValue: fallback)
+            } catch {
+                fatalError("PresenceFM could not create a recovery data store: \(Redactor.redact(error.localizedDescription))")
+            }
+        }
     }
 
     var body: some Scene {
@@ -23,7 +35,7 @@ struct PresenceFMApp: App {
         MenuBarExtra {
             MenuBarView().environment(model)
         } label: {
-            BrandMark(isPrivate: model.isPrivate, monochrome: true)
+            MenuBarBrandMark()
                 .frame(width: 18, height: 18)
                 .accessibilityLabel(model.isPrivate ? "PresenceFM, private" : "PresenceFM")
         }

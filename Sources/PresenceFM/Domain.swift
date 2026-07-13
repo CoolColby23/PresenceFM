@@ -8,6 +8,23 @@ enum TrackSource: String, Sendable, Codable, CaseIterable {
     case appleMusicCatalog, matchedOrUploaded, localFile, unsupportedStream
 }
 
+enum PlaybackPlatform: String, Sendable, Codable, CaseIterable, Identifiable {
+    case appleMusic = "Apple Music"
+    case spotify = "Spotify"
+    case youtubeMusic = "YouTube Music"
+    case tidal = "TIDAL"
+
+    var id: Self { self }
+    var discordAssetKey: String {
+        switch self {
+        case .appleMusic: "applemusic"
+        case .spotify: "spotify"
+        case .youtubeMusic: "youtubemusic"
+        case .tidal: "tidal"
+        }
+    }
+}
+
 enum ArtworkReference: Sendable, Hashable, Codable {
     case file(URL)
 }
@@ -21,6 +38,40 @@ struct TrackMetadata: Sendable, Hashable, Codable {
     let source: TrackSource
     let appleMusicURL: URL?
     let artworkReference: ArtworkReference?
+    let platform: PlaybackPlatform
+
+    init(
+        identity: TrackIdentity, title: String, artist: String, album: String?,
+        duration: TimeInterval, source: TrackSource, appleMusicURL: URL?,
+        artworkReference: ArtworkReference?, platform: PlaybackPlatform = .appleMusic
+    ) {
+        self.identity = identity
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.duration = duration
+        self.source = source
+        self.appleMusicURL = appleMusicURL
+        self.artworkReference = artworkReference
+        self.platform = platform
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case identity, title, artist, album, duration, source, appleMusicURL, artworkReference, platform
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        identity = try values.decode(TrackIdentity.self, forKey: .identity)
+        title = try values.decode(String.self, forKey: .title)
+        artist = try values.decode(String.self, forKey: .artist)
+        album = try values.decodeIfPresent(String.self, forKey: .album)
+        duration = try values.decode(TimeInterval.self, forKey: .duration)
+        source = try values.decode(TrackSource.self, forKey: .source)
+        appleMusicURL = try values.decodeIfPresent(URL.self, forKey: .appleMusicURL)
+        artworkReference = try values.decodeIfPresent(ArtworkReference.self, forKey: .artworkReference)
+        platform = try values.decodeIfPresent(PlaybackPlatform.self, forKey: .platform) ?? .appleMusic
+    }
 
     var isScrobbleable: Bool {
         duration > 30 && source != .unsupportedStream &&
@@ -103,9 +154,36 @@ struct DiscordPresence: Sendable, Equatable {
     let title: String
     let state: String
     let startedAt: Date?
+    let endsAt: Date?
     let appleMusicURL: URL?
     let artworkURL: URL?
     let buttonLabel: String
+    let platform: PlaybackPlatform
+    let smallImage: DiscordSmallImage
+
+    init(
+        title: String, state: String, startedAt: Date?, endsAt: Date? = nil,
+        appleMusicURL: URL?, artworkURL: URL?,
+        buttonLabel: String, platform: PlaybackPlatform = .appleMusic,
+        smallImage: DiscordSmallImage = .presenceFM
+    ) {
+        self.title = title
+        self.state = state
+        self.startedAt = startedAt
+        self.endsAt = endsAt
+        self.appleMusicURL = appleMusicURL
+        self.artworkURL = artworkURL
+        self.buttonLabel = buttonLabel
+        self.platform = platform
+        self.smallImage = smallImage
+    }
+}
+
+enum DiscordSmallImage: String, Sendable, CaseIterable, Identifiable {
+    case presenceFM = "PresenceFM logo"
+    case playbackPlatform = "Music platform logo"
+    case none = "None"
+    var id: Self { self }
 }
 
 enum ServiceStatus: Sendable, Equatable {
@@ -130,6 +208,20 @@ enum ServiceStatus: Sendable, Equatable {
     }
 
     var isConnected: Bool { self == .connected }
+}
+
+extension ServiceStatus {
+    var integrationState: IntegrationState {
+        switch self {
+        case .disabled: .disabled
+        case .awaitingPermission: .permissionRequired
+        case .connecting: .connecting
+        case .connected: .connected
+        case .offline: .offline
+        case .authorizationExpired: .authorizationExpired
+        case .failed: .failed
+        }
+    }
 }
 
 protocol PlaybackProviding: Sendable { func snapshots() async -> AsyncStream<PlaybackSnapshot> }

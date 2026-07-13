@@ -1,0 +1,47 @@
+name: Suggestion
+description: Suggest an improvement or new capability for PresenceFM
+labels: ["Enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping make PresenceFM better. Please describe the outcome you want rather than only a particular implementation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What is difficult, missing, or worth improving?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested experience
+      description: What would you like PresenceFM to do?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - App
+        - Website
+        - Repository and contributor experience
+        - Music connection
+        - Discord connection
+        - Last.fm connection
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional workarounds or other approaches you have tried.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed tokens, secrets, and personal paths.
+          required: true

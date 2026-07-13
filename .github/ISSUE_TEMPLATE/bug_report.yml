@@ -1,5 +1,6 @@
 name: Bug report
 description: Report a reproducible PresenceFM problem
+labels: ["Bug"]
 body:
   - type: input
     id: version
@@ -19,7 +20,9 @@ body:
     validations: { required: true }
   - type: textarea
     id: diagnostics
-    attributes: { label: Redacted diagnostics, if relevant }
+    attributes:
+      label: Redacted diagnostics
+      description: If relevant, paste diagnostics after removing secrets and personal paths.
   - type: checkboxes
     id: privacy
     attributes:

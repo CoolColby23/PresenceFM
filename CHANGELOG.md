@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+- Add deterministic multi-provider coordination, selectable playback providers, shared operational limits, and bounded local integration-health history.
+- Add explicit, versioned SwiftData migration with legacy-store copying, two physical rollback backups, failed-store preservation, non-crashing recovery, bounded diagnostics and scrobble queues, and surfaced persistence failures.
+- Add 7-, 30-, and 90-day comparisons, top tracks and albums, hourly listening, platform summaries, and a documented CSV v1 export.
+- Add validated, credential-free PresenceFM backup and transactional restore with automatic rollback backups.
+- Improve onboarding, VoiceOver status summaries, and keyboard-accessible queue recovery actions.
+
+## 0.4.0 - 2026-07-12
+
+- Ship releases as a branded drag-to-Applications DMG.
+- Add Spotify desktop playback detection and platform-aware links and Discord assets.
+- Add configurable Discord presence lines, button label, timer, link, and small image;
+  replace the Apple-Music-specific album-art tooltip with neutral copy.
+- Fix Last.fm reconnection overwriting an active session key, and validate that Last.fm
+  actually accepted each scrobble before removing it from the retry queue.
+- Add GitHub issue forms, repository labels, and automatic pull-request size labels.
+- Add pull-request CI and strict app/DMG packaging verification, including SwiftPM
+  resource, metadata, signature, and entitlement checks.
+- Add a copyable privacy-redacted support report to Diagnostics and correct the
+  packaged app's runtime version display.
+- Add a clear white drag arrow to the branded DMG and enrich Discord presence
+  with track progress, contextual artwork hover text, platform badges, bounded
+  fields, and platform-aware fallbacks.
+
 ## 0.3.0 - 2026-07-12
 
 - Added a private Listening History dashboard with search, period and outcome filters.

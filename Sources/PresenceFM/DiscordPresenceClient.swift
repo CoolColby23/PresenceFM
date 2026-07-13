@@ -39,18 +39,42 @@ actor DiscordPresenceClient: PresencePublishing {
 
     nonisolated static func activityPayload(for presence: DiscordPresence) -> [String: Any] {
         let largeImage = presence.artworkURL?.absoluteString ?? "presencefm"
+        let details = bounded(presence.title, fallback: "Listening on \(presence.platform.rawValue)")
+        let state = bounded(presence.state, fallback: presence.platform.rawValue)
+        // Discord renders large_text as another visible metadata row for listening
+        // activities. Keep the album artwork, but omit that label so the configured
+        // title/state lines are not repeated underneath it.
+        var assets = ["large_image": largeImage]
+        switch presence.smallImage {
+        case .presenceFM:
+            assets["small_image"] = "presencefm"
+            assets["small_text"] = "Shared with PresenceFM"
+        case .playbackPlatform:
+            assets["small_image"] = presence.platform.discordAssetKey
+            assets["small_text"] = "Playing on \(presence.platform.rawValue)"
+        case .none: break
+        }
         var activity: [String: Any] = [
-            "type": 2, "details": presence.title, "state": presence.state,
-            "assets": ["large_image": largeImage, "large_text": presence.artworkURL == nil ? "PresenceFM" : "Apple Music album artwork"]
+            "type": 2, "details": details, "state": state,
+            "assets": assets
         ]
         if let startedAt = presence.startedAt {
-            activity["timestamps"] = ["start": Int(startedAt.timeIntervalSince1970 * 1_000)]
+            var timestamps = ["start": Int(startedAt.timeIntervalSince1970 * 1_000)]
+            if let endsAt = presence.endsAt, endsAt > startedAt {
+                timestamps["end"] = Int(endsAt.timeIntervalSince1970 * 1_000)
+            }
+            activity["timestamps"] = timestamps
         }
         if let url = presence.appleMusicURL {
             let label = presence.buttonLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-            activity["buttons"] = [["label": String((label.isEmpty ? "Listen on Apple Music" : label).prefix(32)), "url": url.absoluteString]]
+            activity["buttons"] = [["label": String((label.isEmpty ? "Listen on \(presence.platform.rawValue)" : label).prefix(32)), "url": url.absoluteString]]
         }
         return activity
+    }
+
+    nonisolated private static func bounded(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return String((trimmed.isEmpty ? fallback : trimmed).prefix(128))
     }
 
     func clear() async {
