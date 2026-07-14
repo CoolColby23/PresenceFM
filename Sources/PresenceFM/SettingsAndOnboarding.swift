@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var showingBackupImporter = false
     @State private var pendingRestore: PresenceFMBackup?
     @State private var showingRestoreConfirmation = false
+    @State private var showingDisconnectConfirmation = false
     @State private var dataStatus = ""
 
     var body: some View {
@@ -89,10 +90,7 @@ struct SettingsView: View {
                 Toggle("Send now playing", isOn: $preferences.sendNowPlaying)
                 if !model.lastFMUsername.isEmpty {
                     LabeledContent("Connected account", value: model.lastFMUsername)
-                    Button("Disconnect Last.fm", role: .destructive) {
-                        preferences.lastFMEnabled = false
-                        Task { await model.disconnectLastFM() }
-                    }
+                    Button("Disconnect Last.fm…", role: .destructive) { showingDisconnectConfirmation = true }
                 }
                 HStack {
                     Button("Authorize in Browser") { Task { await model.beginLastFMAuthorization() } }
@@ -157,6 +155,18 @@ struct SettingsView: View {
         } message: {
             Text("PresenceFM will first create an automatic local backup, then replace listening history, queued scrobbles, and non-secret settings. Credentials are never imported.")
         }
+        .confirmationDialog(
+            "Disconnect Last.fm?", isPresented: $showingDisconnectConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect Last.fm", role: .destructive) {
+                preferences.lastFMEnabled = false
+                Task { await model.disconnectLastFM() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("PresenceFM will stop scrobbling and remove the saved Last.fm authorization. Your Last.fm account and listening history are not deleted.")
+        }
     }
 
     private func discordPreview(_ format: DiscordLineFormat, custom: String) -> String {
@@ -197,16 +207,25 @@ struct OnboardingView: View {
     @State private var launchAtLogin = false
     @State private var selectedProviders = Set(PlaybackProviderID.allCases)
 
-    private let steps = ["Welcome", "Apple Music", "Discord", "Last.fm", "Privacy", "Startup", "Notifications", "Ready"]
+    private let steps = ["Welcome", "Music Players", "Discord", "Last.fm", "Privacy", "Startup", "Notifications", "Ready"]
 
     var body: some View {
         @Bindable var model = model
         @Bindable var preferences = model.preferences
         VStack(spacing: 24) {
-            HStack { ForEach(steps.indices, id: \.self) { index in Circle().fill(index <= step ? Color.accentColor : .secondary.opacity(0.25)).frame(width: 8, height: 8) } }
+            HStack {
+                ForEach(steps.indices, id: \.self) { index in
+                    Circle()
+                        .fill(index <= step ? Color.accentColor : .secondary.opacity(0.25))
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Step \(step + 1) of \(steps.count): \(steps[step])")
             Group {
                 switch step {
-                case 0: IntroStep(title: "Welcome to PresenceFM", symbol: "waveform.circle.fill", text: "Your music, present. Share Apple Music on Discord and preserve your listening history on Last.fm. Nothing is published until you enable it.", branded: true)
+                case 0: IntroStep(title: "Welcome to PresenceFM", symbol: "waveform.circle.fill", text: "Your music, present. Share tracks from your music apps on Discord and preserve your listening history on Last.fm. Nothing is published until you enable it.", branded: true)
                 case 1:
                     VStack(spacing: 14) {
                         IntroStep(title: "Choose Your Players", symbol: "music.note", text: "Enable only the local players you use. Apple Music permission is requested only when Apple Music is enabled. YouTube Music requires YTMDesktop's Companion Server; TIDAL uses best-effort macOS Now Playing metadata.")
@@ -227,10 +246,10 @@ struct OnboardingView: View {
                 }
             }.frame(maxWidth: 560, minHeight: 310)
             HStack {
-                Button("Back") { step -= 1 }.disabled(step == 0)
+                Button("Back") { step -= 1 }.disabled(step == 0).keyboardShortcut(.cancelAction)
                 Spacer()
-                if step < steps.count - 1 { Button("Continue") { step += 1 }.presenceButton(prominent: true) }
-                else { Button("Finish") { preferences.enabledPlaybackProviders = selectedProviders; model.setDiscordEnabled(discordEnabled); model.setLastFMEnabled(lastFMEnabled && !model.lastFMUsername.isEmpty); preferences.launchAtLogin = launchAtLogin; model.setLaunchAtLogin(launchAtLogin); model.completeOnboarding() }.presenceButton(prominent: true) }
+                if step < steps.count - 1 { Button("Continue") { step += 1 }.presenceButton(prominent: true).keyboardShortcut(.defaultAction) }
+                else { Button("Finish") { preferences.enabledPlaybackProviders = selectedProviders; model.setDiscordEnabled(discordEnabled); model.setLastFMEnabled(lastFMEnabled && !model.lastFMUsername.isEmpty); preferences.launchAtLogin = launchAtLogin; model.setLaunchAtLogin(launchAtLogin); model.completeOnboarding() }.presenceButton(prominent: true).keyboardShortcut(.defaultAction) }
             }
         }.padding(32).frame(width: 700, height: 520).interactiveDismissDisabled()
     }

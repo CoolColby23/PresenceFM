@@ -43,6 +43,48 @@ struct PresenceFMApp: App {
 
         Settings { SettingsView().environment(model).tint(BrandColors.electricBlue).frame(minWidth: 620, minHeight: 520) }
             .modelContainer(model.store.container)
+
+        .commands {
+            PresenceFMCommands(model: model)
+        }
+    }
+}
+
+private struct PresenceFMCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+    let model: AppModel
+
+    var body: some Commands {
+        CommandMenu("Navigate") {
+            ForEach(Array(DashboardSection.allCases.enumerated()), id: \.element.id) { index, section in
+                Button(section.rawValue) {
+                    model.selectedSection = section
+                    NSApp.showDashboard(using: openWindow)
+                }
+                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+            }
+
+            Divider()
+
+            if model.isPrivate {
+                Button("End Private Mode") { model.endPrivateMode() }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+            } else {
+                Button("Go Private Until Resumed") { model.setPrivate(until: nil) }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+            }
+        }
+    }
+}
+
+extension NSApplication {
+    func showDashboard(using openWindow: OpenWindowAction) {
+        if let dashboard = windows.first(where: { $0.identifier?.rawValue.hasPrefix("dashboard-AppWindow") == true }) {
+            dashboard.makeKeyAndOrderFront(nil)
+        } else {
+            openWindow(id: "dashboard")
+        }
+        activate()
     }
 }
 

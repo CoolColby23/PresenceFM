@@ -32,6 +32,11 @@ a {
   text-decoration: none;
 }
 
+:focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 4px;
+}
+
 button,
 a {
   font: inherit;
@@ -98,6 +103,10 @@ a {
   border: 0;
   color: white;
   cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Buttons */
@@ -451,10 +460,17 @@ section {
   letter-spacing: -0.03em;
 }
 
-.release-heading time {
+.release-heading time,
+.release-status {
   color: var(--mist);
   font-size: 13px;
   white-space: nowrap;
+}
+
+.release-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
 }
 
 .release-card ul {
@@ -574,6 +590,13 @@ footer > p {
 
   .button {
     transition: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
 

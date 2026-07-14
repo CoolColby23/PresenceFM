@@ -1,5 +1,12 @@
 # Security Policy
 
+## Supported versions
+
+Security fixes are provided for the latest published release. During the 1.0
+release-candidate period, reports should be checked against both the latest
+release and the current `main` branch. Older releases may be asked to upgrade
+before a fix is prepared.
+
 ## Reporting
 
 Do not open public issues for credential exposure or exploitable vulnerabilities. Use GitHub's private vulnerability reporting for this repository. Include the affected version, reproduction steps, and impact.

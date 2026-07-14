@@ -2,7 +2,7 @@ import Foundation
 
 enum ReleaseConfiguration {
     static var version: String {
-        bundledValue(named: "CFBundleShortVersionString", fallback: "0.4.0")
+        bundledValue(named: "CFBundleShortVersionString", fallback: "1.0.0")
     }
     static var build: String {
         bundledValue(named: "CFBundleVersion", fallback: "1")

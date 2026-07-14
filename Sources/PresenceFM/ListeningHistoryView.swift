@@ -19,7 +19,7 @@ struct ListeningHistoryView: View {
                 ContentUnavailableView(
                     "No Listening History Yet",
                     systemImage: "chart.bar.xaxis",
-                    description: Text("Play music in Apple Music and your private listening history will appear here.")
+                    description: Text("Play music in a supported app and your private listening history will appear here.")
                 )
             } else {
                 ScrollView {

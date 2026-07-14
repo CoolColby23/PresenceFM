@@ -225,6 +225,17 @@ final class PersistenceStore {
         save()
     }
 
+    func backfillArtwork(for persistentID: String, artworkData: Data) {
+        let descriptor = FetchDescriptor<ActivityRecord>(
+            predicate: #Predicate { $0.persistentID == persistentID }
+        )
+        guard let records = try? context.fetch(descriptor) else { return }
+        let missingArtwork = records.filter { $0.artworkData == nil }
+        guard !missingArtwork.isEmpty else { return }
+        missingArtwork.forEach { $0.artworkData = artworkData }
+        save()
+    }
+
     func clearActivity() {
         guard let records = try? context.fetch(FetchDescriptor<ActivityRecord>()) else { return }
         records.forEach(context.delete)

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.0 - Unreleased
+
+- Establish `VERSION` as the source for local and CI package metadata and prepare the app, package verification, and DMG pipeline for 1.0.0.
+- Add keyboard shortcuts for every dashboard destination and Private Mode while reusing the existing dashboard window.
+- Add confirmation and recovery context before queued-scrobble removal or Last.fm disconnection.
+- Improve onboarding keyboard behavior and expose the current step clearly to VoiceOver.
+- Align onboarding, listening-history, README, and brand-guide language with the full multi-provider app.
+- Make timed Private Mode expiration coverage deterministic in optimized release-mode test runs.
+- Preserve the outgoing track's cover artwork when a track change finalizes its listening-history record, and safely backfill matching older blank rows when that track is played again.
+- Add website integrity checks, GitHub Pages deployment, release-candidate messaging, durable documentation links, social metadata, sitemap, and visible keyboard focus.
+- Record the remaining manual compatibility, provider, accessibility, privacy, and soak-test gates without presenting them as completed.
+
 ## 0.4.0 - 2026-07-12
 
 - Add deterministic multi-provider coordination, selectable playback providers, shared operational limits, and bounded local integration-health history.

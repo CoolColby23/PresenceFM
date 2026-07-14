@@ -62,12 +62,12 @@ Write short, active sentences. Say exactly what is shared and where. Prefer "Go 
 
 ## Ready-to-use copy
 
-- Short description: "Share what's playing in Apple Music on Discord and keep your Last.fm history in sync—from one private-by-default Mac app."
+- Short description: "Share what’s playing across your music apps on Discord and keep Last.fm in sync—from one private-by-default Mac app."
 - Launch headline: "Your music, present."
 - Launch deck: "PresenceFM carries the track you're playing into Discord and Last.fm, with privacy controls always within reach."
-- Social: "Now playing, now present. PresenceFM connects Apple Music to Discord Rich Presence and Last.fm."
+- Social: "Now playing, now present. PresenceFM connects your music apps to Discord Rich Presence and Last.fm."
 - Onboarding welcome: "Bring your music into the moment."
-- Empty state: "Nothing playing yet. Start a song in Apple Music and PresenceFM will pick it up."
+- Empty state: "Nothing playing yet. Start a song in a supported music app and PresenceFM will pick it up."
 - Private confirmation: "You're private. Discord presence is cleared and Last.fm updates are paused."
 
 ## Accessibility

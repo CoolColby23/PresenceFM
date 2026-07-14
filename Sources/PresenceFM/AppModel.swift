@@ -99,6 +99,7 @@ final class AppModel {
             let stream = await monitor.snapshots()
             for await value in stream {
                 let changedTrack = snapshot.track?.identity != value.track?.identity
+                let previousArtworkData = artworkData
                 snapshot = value
                 if changedTrack {
                     artworkTask?.cancel()
@@ -106,7 +107,10 @@ final class AppModel {
                     discordArtworkURL = nil
                 }
                 musicStatus = value.confidence == .low ? .awaitingPermission : .connected
-                await handle(await tracker.ingest(value))
+                await handle(
+                    await tracker.ingest(value),
+                    finalizedArtworkData: changedTrack ? previousArtworkData : artworkData
+                )
                 // Publish the new metadata immediately. Artwork is allowed to arrive in a
                 // second update so a catalog lookup never delays the song transition.
                 await updateDiscord()
@@ -125,7 +129,9 @@ final class AppModel {
         queue.stop()
         privacyTask?.cancel()
         Task {
-            if let session = await tracker.shutdown() { await MainActor.run { finalize(session) } }
+            if let session = await tracker.shutdown() {
+                await MainActor.run { finalize(session, artworkData: artworkData) }
+            }
             await discord.clear(); await monitor.stop()
         }
     }
@@ -232,7 +238,10 @@ final class AppModel {
         ytmDesktopStatus = await credentials.value(for: .ytmDesktopToken) == nil ? .disabled : .connected
     }
 
-    private func handle(_ events: [PlaybackSessionTracker.Event]) async {
+    private func handle(
+        _ events: [PlaybackSessionTracker.Event],
+        finalizedArtworkData: Data?
+    ) async {
         for event in events {
             switch event {
             case .started(let session):
@@ -253,13 +262,13 @@ final class AppModel {
                 if preferences.lastFMEnabled && !isPrivate {
                     pendingScrobbleSessionIDs.insert(session.id)
                 }
-            case .finalized(let session): finalize(session)
+            case .finalized(let session): finalize(session, artworkData: finalizedArtworkData)
             case .none: break
             }
         }
     }
 
-    private func finalize(_ session: PlaybackSession) {
+    private func finalize(_ session: PlaybackSession, artworkData: Data?) {
         let wasApprovedAtEligibility = pendingScrobbleSessionIDs.remove(session.id) != nil
         if session.outcome == .played, wasApprovedAtEligibility,
            preferences.lastFMEnabled, !isPrivate {
@@ -388,6 +397,9 @@ final class AppModel {
         let data = await artwork.artwork(for: track)
         guard snapshot.track?.identity == identity else { return }
         artworkData = data
+        if let data {
+            store.backfillArtwork(for: identity.persistentID, artworkData: data)
+        }
         artworkTask = Task { [weak self] in
             guard let self else { return }
             let publicURL = await self.artwork.publicArtworkURL(for: track)
@@ -398,7 +410,10 @@ final class AppModel {
                 downloadedData = nil
             }
             guard !Task.isCancelled, self.snapshot.track?.identity == identity else { return }
-            if let downloadedData { self.artworkData = downloadedData }
+            if let downloadedData {
+                self.artworkData = downloadedData
+                self.store.backfillArtwork(for: identity.persistentID, artworkData: downloadedData)
+            }
             self.discordArtworkURL = publicURL
             await self.updateDiscord()
         }
@@ -414,6 +429,12 @@ final class AppModel {
             guard !Task.isCancelled else { return }
             self.endPrivateMode()
         }
+    }
+
+    /// Provides a deterministic synchronization point for lifecycle tests without
+    /// exposing or polling the underlying task's scheduling state.
+    func waitForPendingPrivacyExpiration() async {
+        await privacyTask?.value
     }
 
     private func updateOperationalNotifications() async {

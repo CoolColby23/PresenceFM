@@ -28,6 +28,8 @@ jobs:
         if: github.event_name == 'pull_request'
       - name: Test
         run: swift test
+      - name: Verify website
+        run: ./scripts/verify-website.sh
 
   package:
     name: Release build and package smoke test
@@ -39,16 +41,15 @@ jobs:
           xcode-version: latest-stable
       - name: Build and package
         env:
-          PRESENCEFM_VERSION: 0.4.0
           PRESENCEFM_BUILD_NUMBER: ${{ github.run_number }}
           PRESENCEFM_SIGNING_IDENTITY: "-"
         run: ./scripts/package-app.sh
       - name: Verify app bundle
         env:
-          PRESENCEFM_VERSION: 0.4.0
           PRESENCEFM_BUILD_NUMBER: ${{ github.run_number }}
         run: ./scripts/verify-package.sh
       - name: Create and verify DMG
         run: |
-          ./scripts/create-dmg.sh 0.4.0
-          hdiutil verify PresenceFM-0.4.0.dmg
+          VERSION="$(<VERSION)"
+          ./scripts/create-dmg.sh "$VERSION"
+          hdiutil verify "PresenceFM-$VERSION.dmg"

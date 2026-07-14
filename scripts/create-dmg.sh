@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-VERSION="${1:-${PRESENCEFM_VERSION:-0.3.0}}"
+VERSION="${1:-${PRESENCEFM_VERSION:-$(<"$ROOT/VERSION")}}"
 APP="$ROOT/PresenceFM.app"
 DMG="$ROOT/PresenceFM-${VERSION}.dmg"
 WORK="$(mktemp -d)"

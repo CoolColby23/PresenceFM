@@ -141,6 +141,45 @@ struct PlaybackSessionTests {
 
 @Suite("Artwork")
 struct ArtworkTests {
+    @Test @MainActor func finalizedArtworkIsPersistedWithHistory() throws {
+        let store = try PersistenceStore(inMemory: true)
+        let artworkData = try #require(Self.imageData())
+        let track = TrackMetadata(
+            identity: .init(persistentID: "history-artwork"), title: "Track", artist: "Artist",
+            album: "Album", duration: 180, source: .appleMusicCatalog,
+            appleMusicURL: nil, artworkReference: nil
+        )
+        let session = PlaybackSession(
+            id: UUID(), track: track, startedAt: .now, accumulatedPlayTime: 100,
+            lastPosition: 100, eligibility: .eligible, outcome: .played
+        )
+
+        store.record(session, artworkData: artworkData)
+
+        let record = try #require(store.context.fetch(FetchDescriptor<ActivityRecord>()).first)
+        #expect(record.artworkData == artworkData)
+    }
+
+    @Test @MainActor func replayedTrackBackfillsMissingHistoryArtwork() throws {
+        let store = try PersistenceStore(inMemory: true)
+        let artworkData = try #require(Self.imageData())
+        let track = TrackMetadata(
+            identity: .init(persistentID: "replayed-track"), title: "Track", artist: "Artist",
+            album: "Album", duration: 180, source: .appleMusicCatalog,
+            appleMusicURL: nil, artworkReference: nil
+        )
+        let session = PlaybackSession(
+            id: UUID(), track: track, startedAt: .now, accumulatedPlayTime: 100,
+            lastPosition: 100, eligibility: .eligible, outcome: .played
+        )
+        store.record(session)
+
+        store.backfillArtwork(for: track.identity.persistentID, artworkData: artworkData)
+
+        let record = try #require(store.context.fetch(FetchDescriptor<ActivityRecord>()).first)
+        #expect(record.artworkData == artworkData)
+    }
+
     @Test func usesAValidFileArtworkReferenceBeforePlayerLookup() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -473,7 +512,7 @@ struct PreferencesAndNotificationTests {
             notifications: NotificationCoordinator(delivery: FakeNotificationDelivery()),
             clock: clock
         )
-        for _ in 0..<5 { await Task.yield() }
+        await model.waitForPendingPrivacyExpiration()
         #expect(!preferences.privateMode)
         #expect(preferences.privateUntil == nil)
         #expect(!model.isPrivate)
@@ -720,7 +759,7 @@ struct ListeningInsightsTests {
     }
 
     @Test func sourceBuildUsesCurrentReleaseVersion() {
-        #expect(ReleaseConfiguration.version == "0.4.0")
+        #expect(ReleaseConfiguration.version == "1.0.0")
         #expect(ReleaseConfiguration.build == "1")
     }
 

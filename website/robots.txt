@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://coolcolby23.github.io/PresenceFM/sitemap.xml

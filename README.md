@@ -2,19 +2,27 @@
 
 PresenceFM is a native macOS menu-bar app that reads current playback from Apple Music, Spotify, YouTube Music through YTMDesktop, or TIDAL, publishes optional Discord Rich Presence, and scrobbles qualified listens to Last.fm. It runs locally, starts private, and requires no PresenceFM account or backend.
 
-## Highlights in 0.4.0
+## Version 1.0 release candidate
+
+The repository now builds as `1.0.0`, but the public 1.0 release remains gated
+on the account-, hardware-, and OS-dependent checks in
+[Documentation/QA-1.0.0-RC.md](Documentation/QA-1.0.0-RC.md). Until those are
+recorded, GitHub's latest published release remains the stable download.
+
+### Highlights
 
 - Apple Music, Spotify, YouTube Music through YTMDesktop, and best-effort TIDAL playback detection.
 - Platform-aware Discord presentation with configurable lines, artwork, progress, badges, buttons, and links.
 - Stricter Last.fm response validation, reliable retry behavior, privacy-redacted support reports, and a branded DMG.
 - Versioned persistence migration, rollback backups, transactional backup/restore, and bounded local diagnostics.
 - Expanded local insights with period comparisons, top tracks and albums, hourly listening, platform summaries, and a stable CSV v1 export.
+- Keyboard shortcuts for every dashboard destination, clearer VoiceOver onboarding progress, and confirmations for destructive queue and account actions.
 
 Listening insights are calculated entirely on this Mac from PresenceFM's local activity records. They are never uploaded by PresenceFM.
 
 ## Rich Now Playing
 
-- Rich Now Playing in both the dashboard and menu bar, with locally sourced album artwork, playback time, and Apple Music links.
+- Rich Now Playing in both the dashboard and menu bar, with album artwork, playback time, and platform-aware listening links.
 - Live scrobble eligibility progress plus clearer queued, submitted, and ineligible states.
 - Searchable local listening activity and direct recovery actions when a service needs attention.
 - Timed Private Mode that automatically resumes integrations when the selected period ends.

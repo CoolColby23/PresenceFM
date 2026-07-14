@@ -313,7 +313,7 @@ struct MenuBarView: View {
             PrivacyControls()
             Divider()
             HStack {
-                Button("Dashboard") { openWindow(id: "dashboard"); NSApp.activate() }
+                Button("Dashboard") { NSApp.showDashboard(using: openWindow) }
                 SettingsLink { Text("Settings") }
                 Spacer()
                 Button("Quit") { model.shutdown(); NSApp.terminate(nil) }
@@ -367,6 +367,7 @@ struct RecentActivityView: View {
 struct QueueView: View {
     @Environment(AppModel.self) private var model
     @Query(sort: \ScrobbleRecord.startedAt, order: .reverse) private var records: [ScrobbleRecord]
+    @State private var pendingRemoval: QueueRemoval?
     var body: some View {
         VStack(spacing: 0) {
             if let commonError {
@@ -391,14 +392,14 @@ struct QueueView: View {
                         Text(record.stateRaw.queueDisplayName).foregroundStyle(.secondary)
                         Menu("Actions", systemImage: "ellipsis.circle") {
                             if record.state == .permanentlyFailed { Button("Retry") { model.retryScrobble(id: record.id) } }
-                            Button("Remove", role: .destructive) { model.removeScrobble(id: record.id) }
+                            Button("Remove…", role: .destructive) { requestRemoval(of: record) }
                         }
                         .menuIndicator(.hidden)
                         .accessibilityLabel("Actions for \(record.title)")
                     }
                     .contextMenu {
                         if record.state == .permanentlyFailed { Button("Retry") { model.retryScrobble(id: record.id) } }
-                        Button("Remove", role: .destructive) { model.removeScrobble(id: record.id) }
+                        Button("Remove…", role: .destructive) { requestRemoval(of: record) }
                     }
                 }
             }
@@ -409,6 +410,23 @@ struct QueueView: View {
                 ContentUnavailableView("Queue Is Clear", systemImage: "checkmark.circle", description: Text("Offline scrobbles will wait here."))
             }
         }
+        .confirmationDialog(
+            "Remove this queued scrobble?",
+            isPresented: Binding(
+                get: { pendingRemoval != nil },
+                set: { if !$0 { pendingRemoval = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingRemoval
+        ) { removal in
+            Button("Remove \(removal.title)", role: .destructive) {
+                model.removeScrobble(id: removal.id)
+                pendingRemoval = nil
+            }
+            Button("Cancel", role: .cancel) { pendingRemoval = nil }
+        } message: { removal in
+            Text("This removes “\(removal.title)” from the local retry queue. It cannot be submitted to Last.fm afterward.")
+        }
     }
 
     private var queuedRecords: [ScrobbleRecord] { records.filter { $0.state != .submitted } }
@@ -418,6 +436,15 @@ struct QueueView: View {
         guard let first = errors.first, errors.count == queuedRecords.count, errors.allSatisfy({ $0 == first }) else { return nil }
         return first
     }
+
+    private func requestRemoval(of record: ScrobbleRecord) {
+        pendingRemoval = QueueRemoval(id: record.id, title: record.title)
+    }
+}
+
+private struct QueueRemoval: Identifiable {
+    let id: UUID
+    let title: String
 }
 
 private struct QueueRecoveryBanner: View {
