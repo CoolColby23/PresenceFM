@@ -21,6 +21,7 @@ actor PlaybackMonitor: PlaybackProviding {
     private var continuation: AsyncStream<PlaybackSnapshot>.Continuation?
     private var monitoringTask: Task<Void, Never>?
     private var enabledProviders = Set(PlaybackProviderID.allCases)
+    private var demoStartedAt: Date?
 
     init(
         credentials: CredentialStore,
@@ -53,6 +54,13 @@ actor PlaybackMonitor: PlaybackProviding {
         enabledProviders = providers
     }
 
+    func setDemoModeEnabled(_ enabled: Bool) {
+        demoStartedAt = enabled ? clock.now : nil
+        if let demoStartedAt {
+            continuation?.yield(DemoPlaybackSequence.snapshot(at: clock.now, startedAt: demoStartedAt))
+        }
+    }
+
     private func poll() async {
         while !Task.isCancelled {
             let snapshot = await readPlayback()
@@ -67,6 +75,9 @@ actor PlaybackMonitor: PlaybackProviding {
     }
 
     private func readPlayback() async -> PlaybackSnapshot {
+        if let demoStartedAt {
+            return DemoPlaybackSequence.snapshot(at: clock.now, startedAt: demoStartedAt)
+        }
         var snapshots: [ProviderSnapshot] = []
         for id in [PlaybackProviderID.appleMusic, .spotify] where enabledProviders.contains(id) {
             if let provider = providers[id] { snapshots.append(await provider.snapshot()) }

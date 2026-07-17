@@ -43,6 +43,19 @@ struct NowPlayingView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 30) {
+                if model.demoModeEnabled {
+                    HStack(spacing: 14) {
+                        Label("Demo playback is active — Discord and Last.fm publishing are paused", systemImage: "testtube.2")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(BrandColors.electricBlue)
+                        Spacer()
+                        Button("End Demo") { model.setDemoModeEnabled(false) }
+                    }
+                    .padding(14)
+                    .presenceCard()
+                    .frame(maxWidth: 820)
+                    .accessibilityElement(children: .contain)
+                }
                 HStack(alignment: .center, spacing: 34) {
                     ArtworkView(data: model.artworkData, size: 260)
                     VStack(alignment: .leading, spacing: 14) {
@@ -58,9 +71,18 @@ struct NowPlayingView: View {
                             }
                         } else {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Play something in a supported music app and PresenceFM will pick it up automatically.")
-                                Text("Apple Music · Spotify · YouTube Music · TIDAL")
-                                    .font(.callout.weight(.medium))
+                                if model.demoModeEnabled {
+                                    Text("Starting safe demo playback…")
+                                } else {
+                                    Text("Play something in a supported music app and PresenceFM will pick it up automatically.")
+                                    Text("Apple Music · Spotify · YouTube Music · TIDAL")
+                                        .font(.callout.weight(.medium))
+                                    Button("Start Demo Playback", systemImage: "play.fill") {
+                                        model.setDemoModeEnabled(true)
+                                    }
+                                    .presenceButton(prominent: true)
+                                    .help("Try PresenceFM without a music app or service account")
+                                }
                             }
                             .foregroundStyle(.secondary)
                         }
@@ -73,6 +95,7 @@ struct NowPlayingView: View {
                         detail: "Playback detection",
                         symbol: "music.note",
                         status: model.musicStatus,
+                        statusLabelOverride: nil,
                         recoveryTitle: model.musicStatus == .awaitingPermission ? "Open Settings" : nil,
                         recoveryAction: model.openAutomationSettings
                     )
@@ -82,6 +105,7 @@ struct NowPlayingView: View {
                         detail: "Rich Presence",
                         symbol: "bubble.left.and.bubble.right",
                         status: model.discordStatus,
+                        statusLabelOverride: model.demoModeEnabled ? "Paused for demo" : nil,
                         recoveryTitle: discordRecoveryTitle,
                         recoveryAction: model.refreshDiscord
                     )
@@ -91,6 +115,7 @@ struct NowPlayingView: View {
                         detail: "Scrobbling",
                         symbol: "dot.radiowaves.left.and.right",
                         status: model.lastFMStatus,
+                        statusLabelOverride: model.demoModeEnabled ? "Paused for demo" : nil,
                         recoveryTitle: lastFMRecoveryTitle,
                         recoveryAction: { model.selectedSection = .settings }
                     )
@@ -196,6 +221,7 @@ struct ServiceHealthRow: View {
     let detail: String
     let symbol: String
     let status: ServiceStatus
+    let statusLabelOverride: String?
     let recoveryTitle: String?
     let recoveryAction: () -> Void
 
@@ -215,7 +241,7 @@ struct ServiceHealthRow: View {
                 .fill(statusColor)
                 .frame(width: 8, height: 8)
                 .accessibilityHidden(true)
-            Text(status.label)
+            Text(statusLabelOverride ?? status.label)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -226,11 +252,12 @@ struct ServiceHealthRow: View {
         .padding(.vertical, 14)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title), \(status.label)")
+        .accessibilityLabel("\(title), \(statusLabelOverride ?? status.label)")
     }
 
     private var statusColor: Color {
-        switch status {
+        if statusLabelOverride != nil { return BrandColors.neutral }
+        return switch status {
         case .connected: BrandColors.success
         case .connecting: BrandColors.warning
         case .awaitingPermission, .authorizationExpired: BrandColors.warning
@@ -306,9 +333,9 @@ struct MenuBarView: View {
                 ScrobbleProgress(state: model.scrobblePresentation)
             }
             VStack(spacing: 8) {
-                CompactStatus(name: model.playbackServiceName, status: model.musicStatus)
-                CompactStatus(name: "Discord", status: model.discordStatus)
-                CompactStatus(name: "Last.fm", status: model.lastFMStatus)
+                CompactStatus(name: model.playbackServiceName, status: model.musicStatus, statusLabelOverride: nil)
+                CompactStatus(name: "Discord", status: model.discordStatus, statusLabelOverride: model.demoModeEnabled ? "Paused for demo" : nil)
+                CompactStatus(name: "Last.fm", status: model.lastFMStatus, statusLabelOverride: model.demoModeEnabled ? "Paused for demo" : nil)
             }
             PrivacyControls()
             Divider()
@@ -323,12 +350,14 @@ struct MenuBarView: View {
 }
 
 struct CompactStatus: View {
-    let name: String; let status: ServiceStatus
+    let name: String
+    let status: ServiceStatus
+    let statusLabelOverride: String?
     var body: some View {
-        HStack { Circle().fill(status.isConnected ? BrandColors.success : BrandColors.neutral).frame(width: 7, height: 7); Text(name); Spacer(); Text(status.label).foregroundStyle(.secondary) }
+        HStack { Circle().fill(statusLabelOverride == nil && status.isConnected ? BrandColors.success : BrandColors.neutral).frame(width: 7, height: 7); Text(name); Spacer(); Text(statusLabelOverride ?? status.label).foregroundStyle(.secondary) }
             .font(.caption)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(name), \(status.label)")
+            .accessibilityLabel("\(name), \(statusLabelOverride ?? status.label)")
     }
 }
 

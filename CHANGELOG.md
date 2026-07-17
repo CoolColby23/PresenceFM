@@ -2,6 +2,8 @@
 
 ## 1.0.0 - Unreleased
 
+- Add a credential-free Demo Mode with a one-command launch and dashboard controls that exercise the real playback, eligibility, and local-history pipeline while visibly pausing Discord and Last.fm publishing.
+- Add OpenAI Build Week judge instructions, Codex/GPT-5.6 implementation notes, and an under-three-minute demo script.
 - Establish `VERSION` as the source for local and CI package metadata and prepare the app, package verification, and DMG pipeline for 1.0.0.
 - Add keyboard shortcuts for every dashboard destination and Private Mode while reusing the existing dashboard window.
 - Add confirmation and recovery context before queued-scrobble removal or Last.fm disconnection.

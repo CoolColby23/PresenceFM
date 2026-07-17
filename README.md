@@ -2,6 +2,31 @@
 
 PresenceFM is a native macOS menu-bar app that reads current playback from Apple Music, Spotify, YouTube Music through YTMDesktop, or TIDAL, publishes optional Discord Rich Presence, and scrobbles qualified listens to Last.fm. It runs locally, starts private, and requires no PresenceFM account or backend.
 
+## OpenAI Build Week judge quickstart
+
+PresenceFM is entered in **Apps for Your Life**. Judges can exercise the real
+now-playing, scrobble-eligibility, and listening-history pipeline without music
+accounts or credentials:
+
+```sh
+swift test
+swift run PresenceFM --demo
+```
+
+The `--demo` launch skips onboarding for that run and immediately rotates short
+sample tracks through the production playback pipeline. It does not change the
+saved onboarding preference. Demo data is never published to Discord or Last.fm;
+completed demo listens remain local so the history and insights screens become
+testable after about a minute. Demo playback can also be started from the empty
+Now Playing dashboard or **Settings → Demo Mode**.
+
+See [Documentation/OPENAI-BUILD-WEEK.md](Documentation/OPENAI-BUILD-WEEK.md)
+for the problem statement, architecture, Codex/GPT-5.6 build notes, and judging
+path. The concise recording plan is in
+[Documentation/BUILD-WEEK-DEMO-SCRIPT.md](Documentation/BUILD-WEEK-DEMO-SCRIPT.md).
+Entrant-only video, identity, `/feedback`, and final-submit steps are in
+[Documentation/BUILD-WEEK-FINAL-SUBMISSION.md](Documentation/BUILD-WEEK-FINAL-SUBMISSION.md).
+
 ## Version 1.0 release candidate
 
 The repository now builds as `1.0.0`, but the public 1.0 release remains gated
@@ -34,7 +59,7 @@ Artwork is read from Apple Music and stored only in a bounded temporary cache. M
 
 - macOS 15 or later
 - Xcode 26 or later for source builds
-- Apple Music or Spotify for automatic playback detection
+- Apple Music or Spotify for automatic live playback detection; Demo Mode requires neither
 - YTMDesktop 2 with its local Companion Server for YouTube Music
 - TIDAL through macOS Now Playing metadata (best effort because TIDAL has no public macOS playback API)
 - Discord Desktop and/or a Last.fm account for optional integrations

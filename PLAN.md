@@ -161,8 +161,8 @@ These are candidates, not commitments.
 - Optional shortcuts or system actions for Private Mode and common recovery
   tasks.
 - Localization after the interface copy and accessibility labels stabilize.
-- A contributor-friendly mock playback mode for testing without changing a real
-  Apple Music session.
+- [x] Add a contributor- and judge-friendly demo playback mode for testing the
+  real local pipeline without a music account or external publishing.
 - Developer ID signing and notarization if sustainable funding or sponsorship
   becomes available; this is not a v1 blocker while the current risk is clearly
   documented.

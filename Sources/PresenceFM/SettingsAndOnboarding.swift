@@ -15,6 +15,11 @@ struct SettingsView: View {
         @Bindable var model = model
         @Bindable var preferences = model.preferences
         Form {
+            Section("Demo Mode") {
+                Toggle("Simulate playback for a product tour", isOn: demoModeBinding)
+                Text("Runs short sample tracks through the real now-playing and local-history pipeline. Discord and Last.fm publishing are paused while the demo is active.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("General") {
                 Toggle("Launch PresenceFM at login", isOn: $preferences.launchAtLogin).onChange(of: preferences.launchAtLogin) { _, value in model.setLaunchAtLogin(value) }
                 Button("Run Onboarding Again") { model.onboardingPresented = true }
@@ -179,6 +184,13 @@ struct SettingsView: View {
         Binding(
             get: { model.preferences.enabledPlaybackProviders.contains(provider) },
             set: { model.setPlaybackProvider(provider, enabled: $0) }
+        )
+    }
+
+    private var demoModeBinding: Binding<Bool> {
+        Binding(
+            get: { model.demoModeEnabled },
+            set: { model.setDemoModeEnabled($0) }
         )
     }
 

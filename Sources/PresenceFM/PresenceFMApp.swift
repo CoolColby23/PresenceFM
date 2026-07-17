@@ -9,13 +9,14 @@ struct PresenceFMApp: App {
     @State private var model: AppModel
 
     init() {
+        let launchInDemoMode = CommandLine.arguments.contains("--demo")
         do {
             let store = try PersistenceStore()
-            _model = State(initialValue: AppModel(store: store))
+            _model = State(initialValue: AppModel(store: store, launchInDemoMode: launchInDemoMode))
         } catch {
             do {
                 let store = try PersistenceStore(inMemory: true)
-                let fallback = AppModel(store: store)
+                let fallback = AppModel(store: store, launchInDemoMode: launchInDemoMode)
                 fallback.usingTemporaryStore = true
                 fallback.persistenceIssue = "PresenceFM could not open its local database. It is running with temporary data so the original store remains untouched. \(Redactor.redact(error.localizedDescription))"
                 _model = State(initialValue: fallback)

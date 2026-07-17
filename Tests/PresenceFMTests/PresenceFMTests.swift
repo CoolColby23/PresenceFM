@@ -1017,6 +1017,91 @@ struct InjectedClockSchedulingTests {
     }
 }
 
+@Suite("Demo playback")
+struct DemoPlaybackTests {
+    private let start = Date(timeIntervalSince1970: 100_000)
+
+    @Test func beginsWithAPlayingScrobbleableTrack() throws {
+        let snapshot = DemoPlaybackSequence.snapshot(at: start, startedAt: start)
+        let track = try #require(snapshot.track)
+
+        #expect(snapshot.state == .playing)
+        #expect(snapshot.position == 0)
+        #expect(track.title == "Midnight Signal")
+        #expect(track.duration == DemoPlaybackSequence.trackDuration)
+        #expect(track.isScrobbleable)
+    }
+
+    @Test func insertsASafeGapAndAdvancesTracks() throws {
+        let gap = DemoPlaybackSequence.snapshot(
+            at: start.addingTimeInterval(DemoPlaybackSequence.trackDuration + 1),
+            startedAt: start
+        )
+        #expect(gap.state == .stopped)
+        #expect(gap.track == nil)
+
+        let next = DemoPlaybackSequence.snapshot(
+            at: start.addingTimeInterval(DemoPlaybackSequence.cycleDuration),
+            startedAt: start
+        )
+        #expect(try #require(next.track).title == "Electric Morning")
+        #expect(next.position == 0)
+    }
+
+    @Test func negativeElapsedTimeClampsToTheFirstTrack() throws {
+        let snapshot = DemoPlaybackSequence.snapshot(
+            at: start.addingTimeInterval(-5), startedAt: start
+        )
+        #expect(try #require(snapshot.track).title == "Midnight Signal")
+        #expect(snapshot.position == 0)
+    }
+
+    @Test func sequenceExercisesEligibilityAndFinalization() async {
+        let tracker = PlaybackSessionTracker()
+        _ = await tracker.ingest(DemoPlaybackSequence.snapshot(at: start, startedAt: start))
+        let threshold = await tracker.ingest(DemoPlaybackSequence.snapshot(
+            at: start.addingTimeInterval(16), startedAt: start
+        ))
+        #expect(threshold.contains { if case .eligible = $0 { true } else { false } })
+
+        let stopped = await tracker.ingest(DemoPlaybackSequence.snapshot(
+            at: start.addingTimeInterval(DemoPlaybackSequence.trackDuration + 1),
+            startedAt: start
+        ))
+        let outcome = stopped.compactMap { event -> SessionOutcome? in
+            guard case .finalized(let session) = event else { return nil }
+            return session.outcome
+        }.first
+        #expect(outcome == .played)
+    }
+
+    @MainActor
+    @Test func launchModeSkipsOnboardingWithoutPersistingCompletion() throws {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let preferences = Preferences(defaults: defaults)
+        let model = AppModel(
+            store: try PersistenceStore(inMemory: true),
+            preferences: preferences,
+            notifications: NotificationCoordinator(delivery: FakeNotificationDelivery()),
+            launchInDemoMode: true
+        )
+
+        #expect(model.demoModeEnabled)
+        #expect(!model.onboardingPresented)
+        #expect(!preferences.onboardingComplete)
+        #expect(!model.allowsExternalPublishing)
+
+        preferences.privateMode = false
+        #expect(!model.allowsExternalPublishing)
+
+        model.setDemoModeEnabled(false)
+        #expect(model.allowsExternalPublishing)
+
+        preferences.privateMode = true
+        #expect(!model.allowsExternalPublishing)
+    }
+}
+
 private final class ImmediateTestClock: AppClock, @unchecked Sendable {
     private let lock = NSLock()
     private var value: Date

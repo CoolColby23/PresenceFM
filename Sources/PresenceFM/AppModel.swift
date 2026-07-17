@@ -25,6 +25,7 @@ final class AppModel {
     var hasStoredLastFMCredentials = false
     var artworkData: Data?
     var discordArtworkURL: URL?
+    var demoModeEnabled = false
     let preferences: Preferences
 
     @ObservationIgnored let store: PersistenceStore
@@ -49,13 +50,15 @@ final class AppModel {
         store: PersistenceStore,
         preferences: Preferences = .shared,
         notifications: NotificationCoordinator = NotificationCoordinator(),
-        clock: any AppClock = SystemAppClock()
+        clock: any AppClock = SystemAppClock(),
+        launchInDemoMode: Bool = false
     ) {
         self.store = store
         self.preferences = preferences
         self.notifications = notifications
         self.clock = clock
-        onboardingPresented = !preferences.onboardingComplete
+        demoModeEnabled = launchInDemoMode
+        onboardingPresented = launchInDemoMode ? false : !preferences.onboardingComplete
         discordStatus = preferences.discordEnabled ? .connecting : .disabled
         lastFMStatus = preferences.lastFMEnabled ? .connecting : .disabled
         schedulePrivacyExpiration()
@@ -96,6 +99,7 @@ final class AppModel {
         queue.start()
         monitoringTask = Task {
             await monitor.setEnabledProviders(preferences.enabledPlaybackProviders)
+            await monitor.setDemoModeEnabled(demoModeEnabled)
             let stream = await monitor.snapshots()
             for await value in stream {
                 let changedTrack = snapshot.track?.identity != value.track?.identity
@@ -114,7 +118,7 @@ final class AppModel {
                 // Publish the new metadata immediately. Artwork is allowed to arrive in a
                 // second update so a catalog lookup never delays the song transition.
                 await updateDiscord()
-                if changedTrack { await updateArtwork(for: value.track) }
+                if changedTrack, !demoModeEnabled { await updateArtwork(for: value.track) }
                 await updateOperationalNotifications()
             }
         }
@@ -246,7 +250,7 @@ final class AppModel {
             switch event {
             case .started(let session):
                 activeSession = session
-                if preferences.lastFMEnabled && preferences.sendNowPlaying && !isPrivate {
+                if preferences.lastFMEnabled && preferences.sendNowPlaying && allowsExternalPublishing {
                     Task { [weak self] in
                         guard let self else { return }
                         do { try await self.lastFM.updateNowPlaying(session); self.lastFMStatus = .connected }
@@ -259,7 +263,7 @@ final class AppModel {
             // render duplicate rows. Submit once playback actually finishes instead.
             case .eligible(let session):
                 activeSession = session
-                if preferences.lastFMEnabled && !isPrivate {
+                if preferences.lastFMEnabled && allowsExternalPublishing {
                     pendingScrobbleSessionIDs.insert(session.id)
                 }
             case .finalized(let session): finalize(session, artworkData: finalizedArtworkData)
@@ -271,7 +275,7 @@ final class AppModel {
     private func finalize(_ session: PlaybackSession, artworkData: Data?) {
         let wasApprovedAtEligibility = pendingScrobbleSessionIDs.remove(session.id) != nil
         if session.outcome == .played, wasApprovedAtEligibility,
-           preferences.lastFMEnabled, !isPrivate {
+           preferences.lastFMEnabled, allowsExternalPublishing {
             queue.enqueue(session)
         }
         activeSession = nil; recentSessions.insert(session, at: 0)
@@ -280,7 +284,7 @@ final class AppModel {
     }
 
     private func updateDiscord() async {
-        guard preferences.discordEnabled, !isPrivate,
+        guard preferences.discordEnabled, allowsExternalPublishing,
               snapshot.state == .playing, snapshot.confidence != .low, let session = activeSession else {
             await discord.clear(); discordStatus = preferences.discordEnabled ? .connecting : .disabled; return
         }
@@ -326,6 +330,20 @@ final class AppModel {
         if enabled { preferences.enabledPlaybackProviders.insert(provider) }
         else { preferences.enabledPlaybackProviders.remove(provider) }
         Task { await monitor.setEnabledProviders(preferences.enabledPlaybackProviders) }
+    }
+
+    func setDemoModeEnabled(_ enabled: Bool) {
+        guard demoModeEnabled != enabled else { return }
+        demoModeEnabled = enabled
+        pendingScrobbleSessionIDs.removeAll()
+        artworkTask?.cancel()
+        artworkData = nil
+        discordArtworkURL = nil
+        Task {
+            await monitor.setDemoModeEnabled(enabled)
+            if enabled { await discord.clear() }
+            else { await updateDiscord() }
+        }
     }
 
     func openAutomationSettings() {
@@ -377,7 +395,10 @@ final class AppModel {
     }
 
     var scrobblePresentation: ScrobblePresentationState? { activeSession?.scrobblePresentation }
-    var playbackServiceName: String { snapshot.track?.platform.rawValue ?? "Music playback" }
+    var playbackServiceName: String {
+        if demoModeEnabled { return "Demo Playback" }
+        return snapshot.track?.platform.rawValue ?? "Music playback"
+    }
 
     var privateUntil: Date? { isPrivate ? preferences.privateUntil : nil }
 
@@ -460,6 +481,8 @@ final class AppModel {
     var isPrivate: Bool {
         preferences.privateMode && (preferences.privateUntil == nil || preferences.privateUntil! > clock.now)
     }
+
+    var allowsExternalPublishing: Bool { !isPrivate && !demoModeEnabled }
 
     var integrationHealth: [IntegrationHealth] {
         [
