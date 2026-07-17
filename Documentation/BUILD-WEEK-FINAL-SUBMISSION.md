@@ -92,7 +92,7 @@ If this task is the primary build task, run `/feedback` here.
 
 Write down:
 
-1. **Submitter Type:** `Individual`, `Team`, or `Organization`.
+1. **Submitter Type:** `Individual`, `Team of Individuals`, or `Organization`.
 2. **Country of Residence:** the country Devpost should associate with the
    entrant.
 
