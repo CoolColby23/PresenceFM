@@ -95,7 +95,9 @@ enum PresenceFMSchemaV1: VersionedSchema {
         var outcomeLabel: String {
             switch SessionOutcome(rawValue: outcomeRaw) {
             case .played, .queued, .submitted: "Played"
+            case .listened: "Listened"
             case .skipped: "Skipped"
+            case .interrupted: "Interrupted"
             case .failed: "Failed"
             case .active: "Playing"
             case nil: outcomeRaw.capitalized

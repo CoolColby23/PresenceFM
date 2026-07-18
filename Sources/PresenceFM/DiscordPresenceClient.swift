@@ -38,7 +38,7 @@ actor DiscordPresenceClient: PresencePublishing {
     }
 
     nonisolated static func activityPayload(for presence: DiscordPresence) -> [String: Any] {
-        let largeImage = presence.artworkURL?.absoluteString ?? "presencefm"
+        let largeImage = presence.artworkURL?.absoluteString ?? ReleaseConfiguration.discordApplicationIconURL
         let details = bounded(presence.title, fallback: "Listening on \(presence.platform.rawValue)")
         let state = bounded(presence.state, fallback: presence.platform.rawValue)
         // Discord renders large_text as another visible metadata row for listening
@@ -47,10 +47,10 @@ actor DiscordPresenceClient: PresencePublishing {
         var assets = ["large_image": largeImage]
         switch presence.smallImage {
         case .presenceFM:
-            assets["small_image"] = "presencefm"
+            assets["small_image"] = ReleaseConfiguration.discordApplicationIconURL
             assets["small_text"] = "Shared with PresenceFM"
         case .playbackPlatform:
-            assets["small_image"] = presence.platform.discordAssetKey
+            assets["small_image"] = presence.platform.discordSmallImageURL
             assets["small_text"] = "Playing on \(presence.platform.rawValue)"
         case .none: break
         }

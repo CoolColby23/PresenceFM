@@ -291,10 +291,11 @@ final class AppModel {
         let album = preferences.showAlbum ? (session.track.album ?? "") : ""
         let lineOne = preferences.discordLineOne == .custom ? preferences.discordCustomLineOne : preferences.discordLineOne.value(title: session.track.title, artist: session.track.artist, album: album)
         let lineTwo = preferences.discordLineTwo == .custom ? preferences.discordCustomLineTwo : preferences.discordLineTwo.value(title: session.track.title, artist: session.track.artist, album: album)
+        let showsFiniteTimer = preferences.showTimer && session.track.supportsFiniteProgress
         let presence = DiscordPresence(title: DiscordTemplate.render(lineOne, title: session.track.title, artist: session.track.artist, album: album, platform: session.track.platform),
                                        state: DiscordTemplate.render(lineTwo, title: session.track.title, artist: session.track.artist, album: album, platform: session.track.platform),
-                                       startedAt: preferences.showTimer ? session.startedAt : nil,
-                                       endsAt: preferences.showTimer ? session.startedAt.addingTimeInterval(session.track.duration) : nil,
+                                       startedAt: showsFiniteTimer ? session.startedAt : nil,
+                                       endsAt: showsFiniteTimer ? session.startedAt.addingTimeInterval(session.track.duration) : nil,
                                        appleMusicURL: preferences.showLink ? session.track.appleMusicURL : nil,
                                        artworkURL: discordArtworkURL,
                                        buttonLabel: preferences.discordButtonLabel,

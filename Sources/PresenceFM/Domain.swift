@@ -5,7 +5,7 @@ struct TrackIdentity: Sendable, Hashable, Codable {
 }
 
 enum TrackSource: String, Sendable, Codable, CaseIterable {
-    case appleMusicCatalog, matchedOrUploaded, localFile, unsupportedStream
+    case appleMusicCatalog, matchedOrUploaded, localFile, radioStream, unsupportedStream
 }
 
 enum PlaybackPlatform: String, Sendable, Codable, CaseIterable, Identifiable {
@@ -15,13 +15,15 @@ enum PlaybackPlatform: String, Sendable, Codable, CaseIterable, Identifiable {
     case tidal = "TIDAL"
 
     var id: Self { self }
-    var discordAssetKey: String {
+    var discordSmallImageURL: String {
+        let icon: String
         switch self {
-        case .appleMusic: "applemusic"
-        case .spotify: "spotify"
-        case .youtubeMusic: "youtubemusic"
-        case .tidal: "tidal"
+        case .appleMusic: icon = "applemusic/FA243C"
+        case .spotify: icon = "spotify/1ED760"
+        case .youtubeMusic: icon = "youtubemusic/FF0033"
+        case .tidal: icon = "tidal/000000"
         }
+        return "https://wsrv.nl/?url=cdn.simpleicons.org/\(icon)&output=png&w=512&h=512"
     }
 }
 
@@ -74,10 +76,13 @@ struct TrackMetadata: Sendable, Hashable, Codable {
     }
 
     var isScrobbleable: Bool {
-        duration > 30 && source != .unsupportedStream &&
+        duration > 30 && !isStream &&
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    var isStream: Bool { source == .radioStream || source == .unsupportedStream }
+    var supportsFiniteProgress: Bool { duration > 0 && !isStream }
 }
 
 enum PlaybackState: String, Sendable, Codable { case stopped, paused, playing }
@@ -92,7 +97,9 @@ struct PlaybackSnapshot: Sendable, Hashable {
 }
 
 enum ScrobbleEligibility: String, Sendable, Codable { case ineligible, listening, eligible }
-enum SessionOutcome: String, Sendable, Codable { case active, played, skipped, queued, submitted, failed }
+enum SessionOutcome: String, Sendable, Codable {
+    case active, played, listened, skipped, interrupted, queued, submitted, failed
+}
 
 struct PlaybackSession: Identifiable, Sendable, Codable, Hashable {
     let id: UUID
@@ -132,7 +139,7 @@ extension PlaybackSession {
 
     var scrobblePresentation: ScrobblePresentationState {
         guard track.isScrobbleable else {
-            if track.source == .unsupportedStream { return .ineligible("Radio streams are not scrobbled.") }
+            if track.isStream { return .ineligible("Radio is shown in PresenceFM but is not scrobbled.") }
             if track.duration <= 30 { return .ineligible("Tracks must be longer than 30 seconds.") }
             return .ineligible("Complete title and artist metadata are required.")
         }

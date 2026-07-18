@@ -90,7 +90,7 @@ Each user supplies their own Last.fm API key and shared secret during onboarding
 
 ## Scrobbling behavior
 
-A track becomes eligible after listening to 50% of its duration or four minutes, whichever comes first. Tracks of 30 seconds or less, radio streams, and tracks with incomplete metadata are not scrobbled. Eligible submissions are deduplicated and retained locally for retry when Last.fm is unavailable.
+A track becomes eligible after listening to 50% of its duration or four minutes, whichever comes first. Tracks of 30 seconds or less and tracks with incomplete metadata are not scrobbled. Apple Music radio and other live streams still appear in Now Playing, Discord presence, and local listening history, but are labeled as radio and are not sent to Last.fm because stream timing is not reliable. Eligible submissions are deduplicated and retained locally for retry when Last.fm is unavailable.
 
 See [PLAN.md](PLAN.md) for planned work, plus [PRIVACY.md](PRIVACY.md),
 [SECURITY.md](SECURITY.md), [SUPPORT.md](SUPPORT.md), and

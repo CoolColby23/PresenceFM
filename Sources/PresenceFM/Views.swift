@@ -64,7 +64,9 @@ struct NowPlayingView: View {
                             .font(.system(size: 38, weight: .bold, design: .rounded)).lineLimit(2)
                         Text(metadataLabel).font(.title2).foregroundStyle(.secondary).lineLimit(2)
                         if let track = model.snapshot.track {
-                            PlaybackProgress(position: model.snapshot.position, duration: track.duration)
+                            if track.supportsFiniteProgress {
+                                PlaybackProgress(position: model.snapshot.position, duration: track.duration)
+                            }
                             ScrobbleProgress(state: model.scrobblePresentation)
                             if let url = track.appleMusicURL {
                                 Link("Open in \(track.platform.rawValue)", destination: url).presenceButton()
@@ -329,7 +331,9 @@ struct MenuBarView: View {
                 }
             }
             if let track = model.snapshot.track {
-                PlaybackProgress(position: model.snapshot.position, duration: track.duration)
+                if track.supportsFiniteProgress {
+                    PlaybackProgress(position: model.snapshot.position, duration: track.duration)
+                }
                 ScrobbleProgress(state: model.scrobblePresentation)
             }
             VStack(spacing: 8) {

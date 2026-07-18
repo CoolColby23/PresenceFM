@@ -42,7 +42,7 @@ struct ListeningHistoryView: View {
                 }.pickerStyle(.segmented).frame(width: 320)
                 Picker("Outcome", selection: $outcome) {
                     ForEach(HistoryOutcomeFilter.allCases) { Text($0.rawValue).tag($0) }
-                }.frame(width: 110)
+                }.frame(width: 125)
                 Menu("More", systemImage: "ellipsis.circle") {
                     Button("Export Visible History…", systemImage: "square.and.arrow.up") { exportVisibleHistory() }
                         .disabled(filteredRecords.isEmpty)
@@ -180,6 +180,7 @@ struct ListeningHistoryView: View {
             let matchesOutcome: Bool = switch outcome {
             case .all: true
             case .played: record.outcomeLabel == "Played"
+            case .listened: record.outcomeLabel == "Listened"
             case .skipped: record.outcomeLabel == "Skipped"
             }
             let matchesSearch = searchText.isEmpty || [record.title, record.artist, record.album ?? ""]

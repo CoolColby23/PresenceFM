@@ -141,7 +141,7 @@ actor YTMDesktopClient {
         let track = TrackMetadata(
             identity: .init(persistentID: "youtube:\(id)"), title: title, artist: artist,
             album: video["album"] as? String, duration: duration,
-            source: isLive ? .unsupportedStream : .appleMusicCatalog,
+            source: isLive ? .radioStream : .appleMusicCatalog,
             appleMusicURL: URL(string: "https://music.youtube.com/watch?v=\(id)"),
             artworkReference: nil, platform: .youtubeMusic
         )

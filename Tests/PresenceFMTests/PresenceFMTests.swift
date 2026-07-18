@@ -22,7 +22,7 @@ struct PlaybackSessionTests {
         _ = await tracker.ingest(.init(track: track, state: .playing, position: 10, observedAt: start, confidence: .high))
         _ = await tracker.ingest(.init(track: track, state: .paused, position: 10, observedAt: start.addingTimeInterval(100), confidence: .high))
         _ = await tracker.ingest(.init(track: track, state: .playing, position: 10, observedAt: start.addingTimeInterval(200), confidence: .high))
-        #expect(await tracker.active?.accumulatedPlayTime == 0)
+        #expect(await tracker.active?.accumulatedPlayTime == 10)
     }
 
     @Test func eligibleTrackIsFinalizedAsPlayed() async {
@@ -39,6 +39,18 @@ struct PlaybackSessionTests {
             return session
         }.first
         #expect(finalized?.outcome == .played)
+    }
+
+    @Test func startingMidTrackUsesObservedPlaybackPosition() async {
+        let tracker = PlaybackSessionTracker()
+        let start = Date(timeIntervalSince1970: 1_000)
+        _ = await tracker.ingest(.init(
+            track: track, state: .playing, position: 60,
+            observedAt: start, confidence: .high
+        ))
+
+        #expect(await tracker.active?.accumulatedPlayTime == 60)
+        #expect(await tracker.active?.eligibility == .eligible)
     }
 
     @Test func eligibleTrackRemainsActiveUntilPlaybackStops() async {
@@ -83,6 +95,46 @@ struct PlaybackSessionTests {
         #expect(events.count == 1)
     }
 
+    @Test func transientStoppedSnapshotDoesNotCreateFalseSkip() async {
+        let tracker = PlaybackSessionTracker()
+        let start = Date(timeIntervalSince1970: 1_000)
+        _ = await tracker.ingest(.init(track: track, state: .playing, position: 10, observedAt: start, confidence: .high))
+        let stopped = await tracker.ingest(.init(track: nil, state: .stopped, position: 0, observedAt: start.addingTimeInterval(1), confidence: .high))
+        let resumed = await tracker.ingest(.init(track: track, state: .playing, position: 12, observedAt: start.addingTimeInterval(2), confidence: .high))
+
+        #expect(!stopped.contains { if case .finalized = $0 { true } else { false } })
+        #expect(!resumed.contains { if case .started = $0 { true } else { false } })
+        #expect(await tracker.active != nil)
+    }
+
+    @Test func earlyStopIsInterruptedRatherThanSkippedAfterGracePeriod() async {
+        let tracker = PlaybackSessionTracker()
+        let start = Date(timeIntervalSince1970: 1_000)
+        _ = await tracker.ingest(.init(track: track, state: .playing, position: 5, observedAt: start, confidence: .high))
+        _ = await tracker.ingest(.init(track: nil, state: .stopped, position: 0, observedAt: start.addingTimeInterval(1), confidence: .high))
+        let events = await tracker.ingest(.init(track: nil, state: .stopped, position: 0, observedAt: start.addingTimeInterval(3), confidence: .high))
+        let outcome = events.compactMap { event -> SessionOutcome? in
+            guard case .finalized(let session) = event else { return nil }
+            return session.outcome
+        }.first
+
+        #expect(outcome == .interrupted)
+    }
+
+    @Test func playingTrackReplacementBeforeThresholdIsSkipped() async {
+        let tracker = PlaybackSessionTracker()
+        let start = Date(timeIntervalSince1970: 1_000)
+        let next = TrackMetadata(identity: .init(persistentID: "next"), title: "Next", artist: "Artist", album: nil, duration: 100, source: .appleMusicCatalog, appleMusicURL: nil, artworkReference: nil)
+        _ = await tracker.ingest(.init(track: track, state: .playing, position: 5, observedAt: start, confidence: .high))
+        let events = await tracker.ingest(.init(track: next, state: .playing, position: 0, observedAt: start.addingTimeInterval(1), confidence: .high))
+        let outcome = events.compactMap { event -> SessionOutcome? in
+            guard case .finalized(let session) = event else { return nil }
+            return session.outcome
+        }.first
+
+        #expect(outcome == .skipped)
+    }
+
     @Test func forwardSeekDoesNotEarnListeningCredit() async {
         let tracker = PlaybackSessionTracker()
         let start = Date(timeIntervalSince1970: 1_000)
@@ -111,12 +163,27 @@ struct PlaybackSessionTests {
     }
 
     @Test func streamIsNeverEligible() async {
-        let stream = TrackMetadata(identity: .init(persistentID: "radio"), title: "Station", artist: "Host", album: nil, duration: 3_600, source: .unsupportedStream, appleMusicURL: nil, artworkReference: nil)
+        let stream = TrackMetadata(identity: .init(persistentID: "radio"), title: "Station", artist: "Host", album: nil, duration: 3_600, source: .radioStream, appleMusicURL: nil, artworkReference: nil)
         let tracker = PlaybackSessionTracker()
         let start = Date(timeIntervalSince1970: 1_000)
         _ = await tracker.ingest(.init(track: stream, state: .playing, position: 0, observedAt: start, confidence: .high))
         _ = await tracker.ingest(.init(track: stream, state: .playing, position: 300, observedAt: start.addingTimeInterval(300), confidence: .high))
         #expect(await tracker.active?.eligibility == .ineligible)
+    }
+
+    @Test func radioTransitionIsListenedRatherThanSkipped() async {
+        let tracker = PlaybackSessionTracker()
+        let start = Date(timeIntervalSince1970: 1_000)
+        let first = TrackMetadata(identity: .init(persistentID: "radio:one"), title: "One", artist: "DJ", album: "Station", duration: 0, source: .radioStream, appleMusicURL: nil, artworkReference: nil)
+        let second = TrackMetadata(identity: .init(persistentID: "radio:two"), title: "Two", artist: "DJ", album: "Station", duration: 0, source: .radioStream, appleMusicURL: nil, artworkReference: nil)
+        _ = await tracker.ingest(.init(track: first, state: .playing, position: 0, observedAt: start, confidence: .high))
+        let events = await tracker.ingest(.init(track: second, state: .playing, position: 0, observedAt: start.addingTimeInterval(30), confidence: .high))
+        let outcome = events.compactMap { event -> SessionOutcome? in
+            guard case .finalized(let session) = event else { return nil }
+            return session.outcome
+        }.first
+
+        #expect(outcome == .listened)
     }
 
     @Test func listeningPresentationReportsProgressAndRemainingTime() {
@@ -133,9 +200,9 @@ struct PlaybackSessionTests {
     }
 
     @Test func ineligiblePresentationExplainsStreams() {
-        let stream = TrackMetadata(identity: .init(persistentID: "radio"), title: "Station", artist: "Host", album: nil, duration: 3_600, source: .unsupportedStream, appleMusicURL: nil, artworkReference: nil)
+        let stream = TrackMetadata(identity: .init(persistentID: "radio"), title: "Station", artist: "Host", album: nil, duration: 3_600, source: .radioStream, appleMusicURL: nil, artworkReference: nil)
         let session = PlaybackSession(id: UUID(), track: stream, startedAt: .now, accumulatedPlayTime: 0, lastPosition: 0, eligibility: .ineligible, outcome: .active)
-        #expect(session.scrobblePresentation == .ineligible("Radio streams are not scrobbled."))
+        #expect(session.scrobblePresentation == .ineligible("Radio is shown in PresenceFM but is not scrobbled."))
     }
 }
 
@@ -231,7 +298,7 @@ struct DiscordPresenceTests {
         let assets = try #require(payload["assets"] as? [String: String])
         #expect(assets["large_image"] == artworkURL.absoluteString)
         #expect(assets["large_text"] == nil)
-        #expect(assets["small_image"] == "presencefm")
+        #expect(assets["small_image"] == ReleaseConfiguration.discordApplicationIconURL)
     }
 
     @Test func platformLogoCanBeUsedAsSmallImage() throws {
@@ -242,8 +309,23 @@ struct DiscordPresenceTests {
         )
         let payload = DiscordPresenceClient.activityPayload(for: presence)
         let assets = try #require(payload["assets"] as? [String: String])
-        #expect(assets["small_image"] == "spotify")
+        #expect(assets["small_image"] == PlaybackPlatform.spotify.discordSmallImageURL)
         #expect(assets["small_text"] == "Playing on Spotify")
+    }
+
+    @Test func everyPlatformSmallImageUsesAWebImageInsteadOfAnUploadedAssetKey() throws {
+        for platform in PlaybackPlatform.allCases {
+            let presence = DiscordPresence(
+                title: "Track", state: "Artist", startedAt: nil, appleMusicURL: nil,
+                artworkURL: nil, buttonLabel: "", platform: platform,
+                smallImage: .playbackPlatform
+            )
+            let payload = DiscordPresenceClient.activityPayload(for: presence)
+            let assets = try #require(payload["assets"] as? [String: String])
+            let smallImage = try #require(assets["small_image"])
+            #expect(URL(string: smallImage)?.scheme == "https")
+            #expect(smallImage.contains("output=png"))
+        }
     }
 
     @Test func discordCanHideSmallImageTimerAndLink() throws {
@@ -296,7 +378,7 @@ struct DiscordPresenceTests {
         #expect(timestamps["start"] == 1_000_000)
         #expect(timestamps["end"] == 1_180_000)
         #expect(assets["large_text"] == nil)
-        #expect(assets["small_image"] == "spotify")
+        #expect(assets["small_image"] == PlaybackPlatform.spotify.discordSmallImageURL)
     }
 
     @Test func discordTextIsTrimmedBoundedAndNeverBlank() throws {
@@ -311,14 +393,14 @@ struct DiscordPresenceTests {
         #expect(state == "TIDAL")
     }
 
-    @Test func bundledAssetIsUsedUntilArtworkArrives() throws {
+    @Test func publicApplicationIconIsUsedUntilArtworkArrives() throws {
         let presence = DiscordPresence(
             title: "Track", state: "Artist", startedAt: nil,
             appleMusicURL: nil, artworkURL: nil, buttonLabel: "Listen"
         )
         let payload = DiscordPresenceClient.activityPayload(for: presence)
         let assets = try #require(payload["assets"] as? [String: String])
-        #expect(assets["large_image"] == "presencefm")
+        #expect(assets["large_image"] == ReleaseConfiguration.discordApplicationIconURL)
     }
 }
 
@@ -335,6 +417,27 @@ struct AdditionalPlaybackPlatformTests {
         #expect(pausedSnapshot.state == .paused)
         #expect(playingSnapshot.track?.duration == 180)
         #expect(playingSnapshot.track?.platform == .spotify)
+    }
+
+    @Test func parsesAppleMusicRadioWithPartialStreamMetadata() throws {
+        let value = [
+            "playing", "Live Session", "", "Apple Music 1", "", "12", "",
+            "URL track", "https://music.apple.com/us/station/apple-music-1/ra.978194965?token=private"
+        ].joined(separator: separator)
+        let observedAt = Date(timeIntervalSince1970: 1_000)
+        let snapshot = PlaybackMonitor.parseMusic(value, observedAt: observedAt)
+        let track = try #require(snapshot.track)
+
+        #expect(snapshot.confidence == .high)
+        #expect(snapshot.observedAt == observedAt)
+        #expect(track.source == .radioStream)
+        #expect(track.artist == "Apple Music 1")
+        #expect(track.isScrobbleable == false)
+        #expect(track.supportsFiniteProgress == false)
+        #expect(track.appleMusicURL?.host == "music.apple.com")
+        #expect(track.appleMusicURL?.query == nil)
+        #expect(!track.identity.persistentID.contains("private"))
+        #expect(track.identity.persistentID.contains("Live Session"))
     }
 
     @Test func rejectsStoppedAndMalformedSpotifyState() {
@@ -380,7 +483,7 @@ struct AdditionalPlaybackPlatformTests {
         let data = Data(#"{"player":{"trackState":1,"videoProgress":4},"video":{"author":"Station","title":"Live","durationSeconds":3600,"id":"live","isLive":true}}"#.utf8)
         let parsed = try YTMDesktopClient.parseSnapshot(data)
         let snapshot = try #require(parsed)
-        #expect(snapshot.track?.source == .unsupportedStream)
+        #expect(snapshot.track?.source == .radioStream)
         #expect(snapshot.track?.isScrobbleable == false)
     }
 }
@@ -730,15 +833,16 @@ struct ListeningInsightsTests {
         let now = Date.now
         store.record(session(title: "One", artist: "Artist A", startedAt: now.addingTimeInterval(-3_600), listened: 120, outcome: .played))
         store.record(session(title: "Two", artist: "Artist A", startedAt: now.addingTimeInterval(-1_800), listened: 180, outcome: .played))
+        store.record(session(title: "Radio", artist: "Station", startedAt: now.addingTimeInterval(-900), listened: 60, outcome: .listened))
         store.record(session(title: "Skip", artist: "Artist B", startedAt: now, listened: 10, outcome: .skipped))
         let records = try store.context.fetch(FetchDescriptor<ActivityRecord>())
         let summary = ListeningSummary(records: records, now: now)
-        #expect(summary.total == 3)
-        #expect(summary.played == 2)
+        #expect(summary.total == 4)
+        #expect(summary.played == 3)
         #expect(summary.skipped == 1)
-        #expect(summary.listeningMinutes == 5)
+        #expect(summary.listeningMinutes == 6)
         #expect(summary.topArtists.first == ArtistPlayCount(artist: "Artist A", plays: 2))
-        #expect(summary.dailyCounts.reduce(0) { $0 + $1.plays } == 2)
+        #expect(summary.dailyCounts.reduce(0) { $0 + $1.plays } == 3)
     }
 
     @Test func csvEscapesMetadataAndClearHistoryDoesNotTouchQueue() throws {

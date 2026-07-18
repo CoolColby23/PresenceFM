@@ -3,6 +3,8 @@
 ## 1.0.0 - Unreleased
 
 - Add a credential-free Demo Mode with a one-command launch and dashboard controls that exercise the real playback, eligibility, and local-history pipeline while visibly pausing Discord and Last.fm publishing.
+- Add Apple Music radio/live-stream metadata to Now Playing, Discord presence, and local insights without sending unreliable stream scrobbles to Last.fm.
+- Stop treating every unfinished or transiently unavailable track as skipped; recover brief provider gaps, credit an already-playing song's observed position, and distinguish listened radio, true track replacements, and interrupted sessions.
 - Add OpenAI Build Week judge instructions, Codex/GPT-5.6 implementation notes, and an under-three-minute demo script.
 - Establish `VERSION` as the source for local and CI package metadata and prepare the app, package verification, and DMG pipeline for 1.0.0.
 - Add keyboard shortcuts for every dashboard destination and Private Mode while reusing the existing dashboard window.

@@ -6,7 +6,7 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 
 - Verify the release archive checksum, move the app to Applications, and confirm its signature/notarization. For an unsigned test build, complete the documented Gatekeeper flow.
 - Deny Apple Music Automation once; confirm the app shows permission required, publishes nothing, and explains recovery.
-- Grant Automation access and confirm playing, paused, stopped, local-file, and unsupported radio states.
+- Grant Automation access and confirm playing, paused, stopped, local-file, and Apple Music radio states.
 - Seek forward and backward, pause for several minutes, change tracks, quit Music, and relaunch PresenceFM. Confirm listening time and recent activity remain credible.
 - Confirm album artwork appears without delaying metadata updates, changes with the track, and falls back to the PresenceFM mark when unavailable.
 - Confirm elapsed/remaining playback time and scrobble eligibility progress remain correct while playing, paused, and seeking.
@@ -33,7 +33,9 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 
 - Authorize a test account and verify the connected username.
 - Confirm now-playing appears promptly and a qualified listen scrobbles exactly once.
-- Confirm short tracks, streams, skipped tracks, and Private Mode do not scrobble.
+- Confirm short tracks, radio/live streams, skipped tracks, and Private Mode do not scrobble.
+- Confirm radio appears in Now Playing, Discord, and local history as Listened, with no finite progress/timer when duration is unavailable.
+- Confirm a brief stopped/metadata gap does not create a false Skipped history row, while an actual playing-track replacement before threshold still does.
 - Disconnect networking through the eligibility point, relaunch PresenceFM, reconnect, and confirm the queued scrobble submits once.
 - Revoke the Last.fm session and confirm authorization-expired state plus a usable reauthorization path.
 - Disconnect Last.fm in Settings and confirm scrobbling is disabled while the API key and shared secret remain available for reauthorization.

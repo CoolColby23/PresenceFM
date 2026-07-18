@@ -1,9 +1,11 @@
 import Foundation
 
 actor PlaybackSessionTracker {
+    private static let stoppedGracePeriod: TimeInterval = 2
     private(set) var active: PlaybackSession?
     private var lastObservedAt: Date?
     private var lastState: PlaybackState = .stopped
+    private var missingTrackSince: Date?
 
     enum Event: Sendable {
         case started(PlaybackSession)
@@ -22,22 +24,43 @@ actor PlaybackSessionTracker {
             return [.none]
         }
         guard let track = snapshot.track else {
-            if let finalized = finalize(as: active?.eligibility == .eligible ? .played : .skipped) {
+            guard active != nil else {
+                lastObservedAt = snapshot.observedAt
+                lastState = snapshot.state
+                return [.none]
+            }
+            if active?.eligibility != .eligible {
+                if missingTrackSince == nil {
+                    missingTrackSince = snapshot.observedAt
+                    lastObservedAt = snapshot.observedAt
+                    lastState = snapshot.state
+                    return [.none]
+                }
+                guard snapshot.observedAt.timeIntervalSince(missingTrackSince ?? snapshot.observedAt) >= Self.stoppedGracePeriod else {
+                    lastObservedAt = snapshot.observedAt
+                    lastState = snapshot.state
+                    return [.none]
+                }
+            }
+            if let finalized = finalize(as: finalOutcome(for: active, replacementState: nil)) {
                 events.append(.finalized(finalized))
             }
+            missingTrackSince = nil
             lastObservedAt = snapshot.observedAt
             lastState = snapshot.state
             return events.isEmpty ? [.none] : events
         }
 
+        missingTrackSince = nil
         if active?.track.identity != track.identity {
-            if let finalized = finalize(as: active?.eligibility == .eligible ? .played : .skipped) {
+            if let finalized = finalize(as: finalOutcome(for: active, replacementState: snapshot.state)) {
                 events.append(.finalized(finalized))
             }
+            let initialPlayTime = min(max(0, snapshot.position), max(0, track.duration))
             var session = PlaybackSession(
                 id: UUID(), track: track,
                 startedAt: snapshot.observedAt.addingTimeInterval(-snapshot.position),
-                accumulatedPlayTime: 0, lastPosition: snapshot.position,
+                accumulatedPlayTime: initialPlayTime, lastPosition: snapshot.position,
                 eligibility: track.isScrobbleable ? .listening : .ineligible,
                 outcome: .active
             )
@@ -66,7 +89,9 @@ actor PlaybackSessionTracker {
         return events
     }
 
-    func shutdown() -> PlaybackSession? { finalize(as: active?.eligibility == .eligible ? .played : .skipped) }
+    func shutdown() -> PlaybackSession? {
+        finalize(as: finalOutcome(for: active, replacementState: nil))
+    }
 
     private func eligibility(for session: PlaybackSession) -> ScrobbleEligibility {
         guard session.track.isScrobbleable else { return .ineligible }
@@ -79,5 +104,16 @@ actor PlaybackSessionTracker {
         session.outcome = outcome
         active = nil
         return session
+    }
+
+    private func finalOutcome(
+        for session: PlaybackSession?,
+        replacementState: PlaybackState?
+    ) -> SessionOutcome {
+        guard let session else { return .interrupted }
+        if session.eligibility == .eligible { return .played }
+        if session.track.isStream || !session.track.isScrobbleable { return .listened }
+        if lastState == .playing, replacementState == .playing { return .skipped }
+        return .interrupted
     }
 }
