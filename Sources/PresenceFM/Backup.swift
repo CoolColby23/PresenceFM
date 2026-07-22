@@ -61,6 +61,14 @@ struct PreferenceBackup: Codable, Equatable {
     let discordCustomLineTwo: String
     let discordButtonLabel: String
     let discordSmallImage: String
+    let discordLargeImage: String?
+    let discordActivityType: String?
+    let discordActivityName: String?
+    let discordTimerStyle: String?
+    let discordLargeImageText: String?
+    let discordSmallImageText: String?
+    let discordSharePaused: Bool?
+    let discordPausedText: String?
     let launchAtLogin: Bool
     let historyRetentionDays: Int
 }
@@ -255,6 +263,14 @@ enum BackupService {
             discordCustomLineTwo: preferences.discordCustomLineTwo,
             discordButtonLabel: preferences.discordButtonLabel,
             discordSmallImage: preferences.discordSmallImage.rawValue,
+            discordLargeImage: preferences.discordLargeImage.rawValue,
+            discordActivityType: preferences.discordActivityType.rawValue,
+            discordActivityName: preferences.discordActivityName,
+            discordTimerStyle: preferences.discordTimerStyle.rawValue,
+            discordLargeImageText: preferences.discordLargeImageText,
+            discordSmallImageText: preferences.discordSmallImageText,
+            discordSharePaused: preferences.discordSharePaused,
+            discordPausedText: preferences.discordPausedText,
             launchAtLogin: preferences.launchAtLogin,
             historyRetentionDays: preferences.historyRetentionDays
         )
@@ -276,6 +292,15 @@ enum BackupService {
         preferences.discordCustomLineTwo = value.discordCustomLineTwo
         preferences.discordButtonLabel = value.discordButtonLabel
         preferences.discordSmallImage = DiscordSmallImage(rawValue: value.discordSmallImage) ?? .playbackPlatform
+        preferences.discordLargeImage = DiscordLargeImage(rawValue: value.discordLargeImage ?? "") ?? .artwork
+        preferences.discordActivityType = DiscordActivityType(rawValue: value.discordActivityType ?? "") ?? .listening
+        preferences.discordActivityName = value.discordActivityName ?? "PresenceFM"
+        preferences.discordTimerStyle = DiscordTimerStyle(rawValue: value.discordTimerStyle ?? "")
+            ?? (value.showTimer ? .remaining : .hidden)
+        preferences.discordLargeImageText = value.discordLargeImageText ?? "{album}"
+        preferences.discordSmallImageText = value.discordSmallImageText ?? "Playing on {platform}"
+        preferences.discordSharePaused = value.discordSharePaused ?? false
+        preferences.discordPausedText = value.discordPausedText ?? "Paused • {artist}"
         preferences.launchAtLogin = value.launchAtLogin
         preferences.historyRetentionDays = value.historyRetentionDays
     }

@@ -25,6 +25,13 @@ history and listening insights. Private Mode pauses external publishing. A
 bounded retry queue, versioned persistence, recovery backups, and privacy-redacted
 diagnostics make the integrations recoverable rather than fragile.
 
+Apple Music Radio and live-stream metadata remain useful in Now Playing,
+Discord, and local insights even when a stream does not expose reliable duration
+or catalog identifiers. Apple Music Radio songs with usable title and artist
+metadata qualify for Last.fm using the normal duration threshold, or after 30
+observed seconds when duration is unknown; unsupported live streams remain local
+and are not misreported as skips.
+
 ## Judge path — no accounts required
 
 1. On macOS 15 or later, clone the repository.
@@ -116,7 +123,7 @@ Credential-free Demo Mode ────────────┘         │
 
 ## Verification
 
-- `swift test` covers playback sessions, provider selection, demo sequencing,
+- `swift test` covers playback sessions, radio and transient-provider behavior, provider selection, demo sequencing,
   Last.fm transport, Discord payloads, persistence, backup/restore, privacy,
   artwork, insights, and injected-clock scheduling.
 - `scripts/package-app.sh` creates the release-mode `.app` bundle.

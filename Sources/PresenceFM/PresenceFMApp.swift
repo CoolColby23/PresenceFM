@@ -7,6 +7,7 @@ import UserNotifications
 struct PresenceFMApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model: AppModel
+    @State private var updateManager = UpdateManager()
 
     init() {
         let launchInDemoMode = CommandLine.arguments.contains("--demo")
@@ -28,7 +29,10 @@ struct PresenceFMApp: App {
 
     var body: some Scene {
         WindowGroup("PresenceFM", id: "dashboard") {
-            DashboardView().environment(model).tint(BrandColors.electricBlue)
+            DashboardView()
+                .environment(model)
+                .environment(updateManager)
+                .tint(BrandColors.electricBlue)
         }
             .defaultSize(width: 980, height: 680)
             .modelContainer(model.store.container)
@@ -42,11 +46,20 @@ struct PresenceFMApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Settings { SettingsView().environment(model).tint(BrandColors.electricBlue).frame(minWidth: 620, minHeight: 520) }
+        Settings {
+            SettingsView()
+                .environment(model)
+                .environment(updateManager)
+                .tint(BrandColors.electricBlue)
+                .frame(minWidth: 620, minHeight: 520)
+        }
             .modelContainer(model.store.container)
 
         .commands {
             PresenceFMCommands(model: model)
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updateManager.checkForUpdates() }
+            }
         }
     }
 }

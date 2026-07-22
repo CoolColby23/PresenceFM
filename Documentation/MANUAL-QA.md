@@ -33,8 +33,9 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 
 - Authorize a test account and verify the connected username.
 - Confirm now-playing appears promptly and a qualified listen scrobbles exactly once.
-- Confirm short tracks, radio/live streams, skipped tracks, and Private Mode do not scrobble.
-- Confirm radio appears in Now Playing, Discord, and local history as Listened, with no finite progress/timer when duration is unavailable.
+- Confirm short tracks, unsupported live streams, skipped tracks, and Private Mode do not scrobble.
+- Confirm an Apple Music Radio song with title and artist metadata uses the normal threshold when duration is available, or 30 observed seconds when it is unknown; it should scrobble exactly once after its metadata changes and be marked as radio-selected without an invented duration.
+- Confirm Apple Music Radio still has no finite progress/timer when duration is unavailable; a radio song that changes before eligibility remains local as Listened.
 - Confirm a brief stopped/metadata gap does not create a false Skipped history row, while an actual playing-track replacement before threshold still does.
 - Disconnect networking through the eligibility point, relaunch PresenceFM, reconnect, and confirm the queued scrobble submits once.
 - Revoke the Last.fm session and confirm authorization-expired state plus a usable reauthorization path.
@@ -60,6 +61,10 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 
 ## Lifecycle and compatibility
 
+- Choose **PresenceFM → Check for Updates…** and confirm the current-version result is shown. Repeat from **Settings → Updates**.
+- Toggle automatic update checks and downloads, relaunch, and confirm both preferences persist. Confirm automatic downloads are unavailable when automatic checks are disabled.
+- From an older signed test build pointed at a test appcast, download and install the newer DMG in app, relaunch, and confirm the displayed version/build changed without losing local data or preferences.
+- Tamper with a signed update archive and confirm PresenceFM refuses to install it.
 - Close the dashboard while leaving the menu-bar item active; confirm monitoring continues.
 - Verify launch at login registration and removal.
 - Run on macOS 15–25 and confirm standard materials/buttons render correctly.

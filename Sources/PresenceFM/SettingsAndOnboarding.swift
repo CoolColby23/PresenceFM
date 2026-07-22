@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(UpdateManager.self) private var updateManager
     @State private var showAdvancedCredentials = false
     @State private var backupDocument: PresenceFMBackupDocument?
     @State private var showingBackupExporter = false
@@ -23,6 +24,19 @@ struct SettingsView: View {
             Section("General") {
                 Toggle("Launch PresenceFM at login", isOn: $preferences.launchAtLogin).onChange(of: preferences.launchAtLogin) { _, value in model.setLaunchAtLogin(value) }
                 Button("Run Onboarding Again") { model.onboardingPresented = true }
+            }
+            Section("Updates") {
+                Toggle("Automatically check for updates", isOn: automaticUpdateChecks)
+                Toggle("Automatically download updates", isOn: automaticUpdateDownloads)
+                    .disabled(!updateManager.automaticallyChecksForUpdates)
+                HStack {
+                    Button("Check for Updates…") { updateManager.checkForUpdates() }
+                    Spacer()
+                    Text("Version \(ReleaseConfiguration.version) (\(ReleaseConfiguration.build))")
+                        .foregroundStyle(.secondary)
+                }
+                Text("Updates are downloaded from official PresenceFM GitHub releases and verified before installation.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Listening History") {
                 Picker("Keep history", selection: $preferences.historyRetentionDays) {
@@ -47,47 +61,7 @@ struct SettingsView: View {
                 Text("Backups contain listening history, the scrobble queue, and non-secret settings. Credentials, authorization tokens, diagnostics, artwork, and machine-specific paths are excluded. Restore replaces current local data and disconnects Last.fm.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Discord") {
-                Toggle("Enable Discord Rich Presence", isOn: $preferences.discordEnabled).onChange(of: preferences.discordEnabled) { _, value in model.setDiscordEnabled(value) }
-                Toggle("Show album", isOn: $preferences.showAlbum).onChange(of: preferences.showAlbum) { _, _ in model.refreshPresenceOptions() }
-                Toggle("Show timer", isOn: $preferences.showTimer).onChange(of: preferences.showTimer) { _, _ in model.refreshPresenceOptions() }
-                Toggle("Show listening link", isOn: $preferences.showLink).onChange(of: preferences.showLink) { _, _ in model.refreshPresenceOptions() }
-                Picker("First line", selection: $preferences.discordLineOne) {
-                    ForEach(DiscordLineFormat.allCases) { Text($0.rawValue).tag($0) }
-                }.onChange(of: preferences.discordLineOne) { _, _ in model.refreshPresenceOptions() }
-                if preferences.discordLineOne == .custom {
-                    TextField("First line template", text: $preferences.discordCustomLineOne)
-                        .onSubmit { model.refreshPresenceOptions() }
-                }
-                Picker("Second line", selection: $preferences.discordLineTwo) {
-                    ForEach(DiscordLineFormat.allCases) { Text($0.rawValue).tag($0) }
-                }.onChange(of: preferences.discordLineTwo) { _, _ in model.refreshPresenceOptions() }
-                if preferences.discordLineTwo == .custom {
-                    TextField("Second line template", text: $preferences.discordCustomLineTwo)
-                        .onSubmit { model.refreshPresenceOptions() }
-                }
-                if preferences.discordLineOne == .custom || preferences.discordLineTwo == .custom {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Available tokens: {title}, {artist}, {album}, {platform}")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text("Preview") .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        Text(discordPreview(preferences.discordLineOne, custom: preferences.discordCustomLineOne))
-                        Text(discordPreview(preferences.discordLineTwo, custom: preferences.discordCustomLineTwo))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(10).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary, in: .rect(cornerRadius: 8))
-                }
-                Picker("Small image", selection: $preferences.discordSmallImage) {
-                    ForEach(DiscordSmallImage.allCases) { Text($0.rawValue).tag($0) }
-                }.onChange(of: preferences.discordSmallImage) { _, _ in model.refreshPresenceOptions() }
-                TextField("Button label", text: $preferences.discordButtonLabel, prompt: Text("Automatic for each platform"))
-                    .onSubmit { model.refreshPresenceOptions() }
-                Text("Leave the label empty for platform-aware text such as “Listen on Spotify.” Discord limits labels to 32 characters.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("Album artwork is paired with your selected platform or PresenceFM badge. The timer displays track progress when duration is available.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if preferences.discordEnabled { Button("Reconnect to Discord") { model.refreshDiscord() } }
-            }
+            DiscordSettingsSection(model: model, preferences: preferences)
             Section("Last.fm") {
                 SecureField("API Key", text: $model.credentialDraft.lastFMAPIKey)
                 SecureField("Shared Secret", text: $model.credentialDraft.lastFMSecret)
@@ -174,12 +148,6 @@ struct SettingsView: View {
         }
     }
 
-    private func discordPreview(_ format: DiscordLineFormat, custom: String) -> String {
-        let template = format == .custom ? custom : format.value(title: "Midnight Drive", artist: "The Satellites", album: "Afterglow")
-        let rendered = DiscordTemplate.render(template, title: "Midnight Drive", artist: "The Satellites", album: "Afterglow", platform: .appleMusic)
-        return rendered.isEmpty ? "Apple Music" : rendered
-    }
-
     private func playbackProviderBinding(_ provider: PlaybackProviderID) -> Binding<Bool> {
         Binding(
             get: { model.preferences.enabledPlaybackProviders.contains(provider) },
@@ -191,6 +159,20 @@ struct SettingsView: View {
         Binding(
             get: { model.demoModeEnabled },
             set: { model.setDemoModeEnabled($0) }
+        )
+    }
+
+    private var automaticUpdateChecks: Binding<Bool> {
+        Binding(
+            get: { updateManager.automaticallyChecksForUpdates },
+            set: { updateManager.automaticallyChecksForUpdates = $0 }
+        )
+    }
+
+    private var automaticUpdateDownloads: Binding<Bool> {
+        Binding(
+            get: { updateManager.automaticallyDownloadsUpdates },
+            set: { updateManager.automaticallyDownloadsUpdates = $0 }
         )
     }
 
@@ -208,6 +190,194 @@ struct SettingsView: View {
             dataStatus = "Backup restored. Reconnect Last.fm if needed."
         } catch { dataStatus = error.localizedDescription }
         self.pendingRestore = nil
+    }
+}
+
+private struct DiscordSettingsSection: View {
+    let model: AppModel
+    let preferences: Preferences
+
+    var body: some View {
+        @Bindable var preferences = preferences
+        Section("Discord") {
+            Toggle("Enable Discord Rich Presence", isOn: $preferences.discordEnabled)
+                .accessibilityIdentifier("discord.enabled")
+                .onChange(of: preferences.discordEnabled) { _, value in model.setDiscordEnabled(value) }
+
+            Picker("Activity style", selection: $preferences.discordActivityType) {
+                ForEach(DiscordActivityType.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .accessibilityIdentifier("discord.activity-style")
+            .onChange(of: preferences.discordActivityType) { _, _ in refresh() }
+
+            TextField("Activity name", text: $preferences.discordActivityName, prompt: Text("PresenceFM"))
+                .accessibilityIdentifier("discord.activity-name")
+                .onSubmit { refresh() }
+            Text("This is the text after “\(preferences.discordActivityType.rawValue)” in Discord. Templates are supported.")
+                .font(.caption).foregroundStyle(.secondary)
+
+            Picker("First line", selection: $preferences.discordLineOne) {
+                ForEach(DiscordLineFormat.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .accessibilityIdentifier("discord.first-line")
+            .onChange(of: preferences.discordLineOne) { _, _ in refresh() }
+            if preferences.discordLineOne == .custom {
+                TextField("First line template", text: $preferences.discordCustomLineOne)
+                    .onSubmit { refresh() }
+            }
+
+            Picker("Second line", selection: $preferences.discordLineTwo) {
+                ForEach(DiscordLineFormat.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .accessibilityIdentifier("discord.second-line")
+            .onChange(of: preferences.discordLineTwo) { _, _ in refresh() }
+            if preferences.discordLineTwo == .custom {
+                TextField("Second line template", text: $preferences.discordCustomLineTwo)
+                    .onSubmit { refresh() }
+            }
+
+            Toggle("Include album in formatted lines", isOn: $preferences.showAlbum)
+                .onChange(of: preferences.showAlbum) { _, _ in refresh() }
+            Picker("Timer", selection: $preferences.discordTimerStyle) {
+                ForEach(DiscordTimerStyle.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .accessibilityIdentifier("discord.timer")
+            .onChange(of: preferences.discordTimerStyle) { _, _ in refresh() }
+
+            Toggle("Keep status visible while paused", isOn: $preferences.discordSharePaused)
+                .accessibilityIdentifier("discord.share-paused")
+                .onChange(of: preferences.discordSharePaused) { _, _ in refresh() }
+            if preferences.discordSharePaused {
+                TextField("Paused status template", text: $preferences.discordPausedText)
+                    .onSubmit { refresh() }
+            }
+
+            Picker("Large image", selection: $preferences.discordLargeImage) {
+                ForEach(DiscordLargeImage.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .accessibilityIdentifier("discord.large-image")
+            .onChange(of: preferences.discordLargeImage) { _, _ in refresh() }
+            TextField("Large image hover text", text: $preferences.discordLargeImageText, prompt: Text("Optional"))
+                .onSubmit { refresh() }
+
+            Picker("Small image", selection: $preferences.discordSmallImage) {
+                ForEach(DiscordSmallImage.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .accessibilityIdentifier("discord.small-image")
+            .onChange(of: preferences.discordSmallImage) { _, _ in refresh() }
+            if preferences.discordSmallImage != .none {
+                TextField("Small image hover text", text: $preferences.discordSmallImageText, prompt: Text("Automatic"))
+                    .onSubmit { refresh() }
+            }
+
+            Toggle("Show listening link", isOn: $preferences.showLink)
+                .accessibilityIdentifier("discord.show-link")
+                .onChange(of: preferences.showLink) { _, _ in refresh() }
+            if preferences.showLink {
+                TextField("Button label", text: $preferences.discordButtonLabel, prompt: Text("Automatic for each platform"))
+                    .onSubmit { refresh() }
+                Text("Discord limits button labels to 32 characters.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            DiscordStatusPreview(firstLine: preview(preferences.discordLineOne, custom: preferences.discordCustomLineOne),
+                                 secondLine: preview(preferences.discordLineTwo, custom: preferences.discordCustomLineTwo),
+                                 activity: preferences.discordActivityType.rawValue,
+                                 activityName: previewActivityName,
+                                 timer: preferences.discordTimerStyle.rawValue)
+
+            Text("Templates support {title}, {artist}, {album}, {platform}, {state}, {position}, and {duration}.")
+                .font(.caption).foregroundStyle(.secondary)
+
+            HStack {
+                Menu("Apply Preset") {
+                    Button("Balanced") { applyPreset(.balanced) }
+                    Button("Minimal") { applyPreset(.minimal) }
+                    Button("Detailed") { applyPreset(.detailed) }
+                }
+                if preferences.discordEnabled { Button("Reconnect to Discord") { model.refreshDiscord() } }
+            }
+        }
+    }
+
+    private func preview(_ format: DiscordLineFormat, custom: String) -> String {
+        let template = format == .custom
+            ? custom
+            : format.value(title: "Midnight Drive", artist: "The Satellites", album: "Afterglow")
+        let rendered = DiscordTemplate.render(
+            template, title: "Midnight Drive", artist: "The Satellites", album: "Afterglow",
+            platform: .appleMusic, position: 82, duration: 224
+        )
+        return rendered.isEmpty ? "Apple Music" : rendered
+    }
+
+    private var previewActivityName: String {
+        let rendered = DiscordTemplate.render(
+            preferences.discordActivityName, title: "Midnight Drive", artist: "The Satellites",
+            album: "Afterglow", platform: .appleMusic, position: 82, duration: 224
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        return rendered.isEmpty ? "PresenceFM" : rendered
+    }
+
+    private func refresh() { model.refreshPresenceOptions() }
+
+    private func applyPreset(_ preset: DiscordPreset) {
+        switch preset {
+        case .balanced:
+            preferences.discordActivityType = .listening
+            preferences.discordLineOne = .title
+            preferences.discordLineTwo = .artistAndAlbum
+            preferences.discordTimerStyle = .remaining
+            preferences.discordLargeImage = .artwork
+            preferences.discordSmallImage = .playbackPlatform
+            preferences.showLink = true
+        case .minimal:
+            preferences.discordActivityType = .listening
+            preferences.discordLineOne = .title
+            preferences.discordLineTwo = .artist
+            preferences.discordTimerStyle = .hidden
+            preferences.discordLargeImage = .artwork
+            preferences.discordSmallImage = .none
+            preferences.showLink = false
+        case .detailed:
+            preferences.discordActivityType = .listening
+            preferences.discordLineOne = .custom
+            preferences.discordCustomLineOne = "{title} • {position}/{duration}"
+            preferences.discordLineTwo = .custom
+            preferences.discordCustomLineTwo = "{artist} — {album}"
+            preferences.discordTimerStyle = .remaining
+            preferences.discordLargeImage = .artwork
+            preferences.discordLargeImageText = "{album}"
+            preferences.discordSmallImage = .playbackPlatform
+            preferences.discordSmallImageText = "Playing on {platform}"
+            preferences.showLink = true
+        }
+        refresh()
+    }
+}
+
+private enum DiscordPreset { case balanced, minimal, detailed }
+
+private struct DiscordStatusPreview: View {
+    let firstLine: String
+    let secondLine: String
+    let activity: String
+    let activityName: String
+    let timer: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Preview").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text(firstLine).font(.headline).lineLimit(1)
+            Text(secondLine).foregroundStyle(.secondary).lineLimit(1)
+            Text("\(activity) \(activityName) · \(timer)").font(.caption).foregroundStyle(.tertiary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary, in: .rect(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("discord.preview")
+        .accessibilityLabel("Discord preview: \(activity) \(activityName), \(firstLine), \(secondLine), \(timer)")
     }
 }
 

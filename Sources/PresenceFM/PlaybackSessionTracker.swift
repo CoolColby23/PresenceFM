@@ -73,7 +73,11 @@ actor PlaybackSessionTracker {
                 let positionDelta = snapshot.position - session.lastPosition
                 // Count wall time only while playback advances naturally. Forward seeks do not
                 // grant listening credit and backward seeks do not erase earned credit.
-                if positionDelta >= -2, positionDelta <= wallDelta + 4 {
+                if session.track.isAppleMusicRadio, abs(positionDelta) < 1 {
+                    // Radio metadata often has no useful player position. Credit only a
+                    // bounded observation gap so sleep/wake cannot manufacture a listen.
+                    session.accumulatedPlayTime += min(wallDelta, 5)
+                } else if positionDelta >= -2, positionDelta <= wallDelta + 4 {
                     session.accumulatedPlayTime += min(wallDelta, max(0, positionDelta + 1))
                 }
             }

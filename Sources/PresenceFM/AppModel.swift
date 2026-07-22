@@ -14,6 +14,10 @@ final class AppModel {
     var discordStatus: ServiceStatus = .disabled { didSet { recordHealth(.discord, discordStatus) } }
     var lastFMStatus: ServiceStatus = .disabled { didSet { recordHealth(.lastFM, lastFMStatus) } }
     var ytmDesktopStatus: ServiceStatus = .disabled { didSet { recordHealth(.youtubeMusic, ytmDesktopStatus) } }
+    var providerStatuses = Dictionary(
+        uniqueKeysWithValues: PlaybackProviderID.allCases.map { ($0, ServiceStatus.connecting) }
+    )
+    var playbackPollMetrics = PlaybackPollMetrics(totalDuration: 0, providerDurations: [:])
     var persistenceIssue: String?
     var usingTemporaryStore = false
     var persistenceRecoveryStatus = ""
@@ -44,6 +48,7 @@ final class AppModel {
     @ObservationIgnored private var privacyTask: Task<Void, Never>?
     @ObservationIgnored private var pendingScrobbleSessionIDs: Set<UUID> = []
     @ObservationIgnored private var sectionObserver: NSObjectProtocol?
+    @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var started = false
 
     init(
@@ -70,6 +75,13 @@ final class AppModel {
             guard let name = notification.userInfo?["section"] as? String,
                   let section = DashboardSection(rawValue: name) else { return }
             Task { @MainActor in self?.selectedSection = section; NSApp.activate() }
+        }
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.shutdown() }
         }
     }
 
@@ -101,16 +113,19 @@ final class AppModel {
             await monitor.setEnabledProviders(preferences.enabledPlaybackProviders)
             await monitor.setDemoModeEnabled(demoModeEnabled)
             let stream = await monitor.snapshots()
-            for await value in stream {
+            for await update in stream {
+                let value = update.playback
                 let changedTrack = snapshot.track?.identity != value.track?.identity
                 let previousArtworkData = artworkData
                 snapshot = value
+                playbackPollMetrics = update.metrics
+                applyProviderHealth(update.providerHealth)
                 if changedTrack {
                     artworkTask?.cancel()
                     artworkData = nil
                     discordArtworkURL = nil
                 }
-                musicStatus = value.confidence == .low ? .awaitingPermission : .connected
+                musicStatus = aggregatePlaybackStatus(for: value)
                 await handle(
                     await tracker.ingest(value),
                     finalizedArtworkData: changedTrack ? previousArtworkData : artworkData
@@ -285,22 +300,14 @@ final class AppModel {
 
     private func updateDiscord() async {
         guard preferences.discordEnabled, allowsExternalPublishing,
-              snapshot.state == .playing, snapshot.confidence != .low, let session = activeSession else {
+              (snapshot.state == .playing || (snapshot.state == .paused && preferences.discordSharePaused)),
+              snapshot.confidence != .low, let session = activeSession else {
             await discord.clear(); discordStatus = preferences.discordEnabled ? .connecting : .disabled; return
         }
-        let album = preferences.showAlbum ? (session.track.album ?? "") : ""
-        let lineOne = preferences.discordLineOne == .custom ? preferences.discordCustomLineOne : preferences.discordLineOne.value(title: session.track.title, artist: session.track.artist, album: album)
-        let lineTwo = preferences.discordLineTwo == .custom ? preferences.discordCustomLineTwo : preferences.discordLineTwo.value(title: session.track.title, artist: session.track.artist, album: album)
-        let showsFiniteTimer = preferences.showTimer && session.track.supportsFiniteProgress
-        let presence = DiscordPresence(title: DiscordTemplate.render(lineOne, title: session.track.title, artist: session.track.artist, album: album, platform: session.track.platform),
-                                       state: DiscordTemplate.render(lineTwo, title: session.track.title, artist: session.track.artist, album: album, platform: session.track.platform),
-                                       startedAt: showsFiniteTimer ? session.startedAt : nil,
-                                       endsAt: showsFiniteTimer ? session.startedAt.addingTimeInterval(session.track.duration) : nil,
-                                       appleMusicURL: preferences.showLink ? session.track.appleMusicURL : nil,
-                                       artworkURL: discordArtworkURL,
-                                       buttonLabel: preferences.discordButtonLabel,
-                                       platform: session.track.platform,
-                                       smallImage: preferences.discordSmallImage)
+        let presence = DiscordPresenceFactory.make(
+            session: session, snapshot: snapshot, preferences: preferences,
+            artworkURL: discordArtworkURL, now: clock.now
+        )
         do { try await discord.publish(presence); discordStatus = .connected }
         catch let error as DiscordError {
             discordStatus = error == .unavailable ? .offline : .failed(error.localizedDescription)
@@ -330,6 +337,9 @@ final class AppModel {
     func setPlaybackProvider(_ provider: PlaybackProviderID, enabled: Bool) {
         if enabled { preferences.enabledPlaybackProviders.insert(provider) }
         else { preferences.enabledPlaybackProviders.remove(provider) }
+        let nextStatus: ServiceStatus = enabled ? .connecting : .disabled
+        providerStatuses[provider] = nextStatus
+        recordHealth(integrationID(for: provider), nextStatus)
         Task { await monitor.setEnabledProviders(preferences.enabledPlaybackProviders) }
     }
 
@@ -340,10 +350,22 @@ final class AppModel {
         artworkTask?.cancel()
         artworkData = nil
         discordArtworkURL = nil
+        if !enabled {
+            // Do not leave synthetic metadata publishable while the monitor switches
+            // back to real providers. The next provider snapshot will safely finalize
+            // the demo session locally and replace this temporary stopped state.
+            snapshot = PlaybackSnapshot(
+                track: nil,
+                state: .stopped,
+                position: 0,
+                observedAt: clock.now,
+                confidence: .high
+            )
+            musicStatus = .connecting
+        }
         Task {
             await monitor.setDemoModeEnabled(enabled)
-            if enabled { await discord.clear() }
-            else { await updateDiscord() }
+            await discord.clear()
         }
     }
 
@@ -486,12 +508,57 @@ final class AppModel {
     var allowsExternalPublishing: Bool { !isPrivate && !demoModeEnabled }
 
     var integrationHealth: [IntegrationHealth] {
-        [
-            health(playbackIntegrationID, musicStatus),
-            health(.youtubeMusic, ytmDesktopStatus),
-            health(.discord, discordStatus),
-            health(.lastFM, lastFMStatus)
-        ]
+        PlaybackProviderID.allCases.map { id in
+            health(integrationID(for: id), providerStatuses[id] ?? .connecting)
+        } + [health(.discord, discordStatus), health(.lastFM, lastFMStatus)]
+    }
+
+    private func applyProviderHealth(_ values: [PlaybackProviderID: ProviderHealth]) {
+        for id in PlaybackProviderID.allCases {
+            let status: ServiceStatus = switch values[id] ?? .inactive {
+            case .disabled: .disabled
+            case .available: .connected
+            case .inactive: .inactive
+            case .permissionRequired: .awaitingPermission
+            case .unavailable(let message): .failed(Redactor.redact(message))
+            }
+            if providerStatuses[id] != status {
+                providerStatuses[id] = status
+                recordHealth(integrationID(for: id), status)
+            }
+        }
+    }
+
+    private func providerID(for platform: PlaybackPlatform?) -> PlaybackProviderID {
+        switch platform {
+        case .spotify: .spotify
+        case .youtubeMusic: .youtubeMusic
+        case .tidal: .tidal
+        case .appleMusic, nil: .appleMusic
+        }
+    }
+
+    private func aggregatePlaybackStatus(for value: PlaybackSnapshot) -> ServiceStatus {
+        if let platform = value.track?.platform {
+            return providerStatuses[providerID(for: platform)]
+                ?? (value.confidence == .low ? .awaitingPermission : .connected)
+        }
+        let statuses = preferences.enabledPlaybackProviders.compactMap { providerStatuses[$0] }
+        if statuses.contains(.awaitingPermission) { return .awaitingPermission }
+        if let failed = statuses.first(where: { if case .failed = $0 { true } else { false } }) { return failed }
+        if statuses.contains(.connected) { return .connected }
+        if statuses.contains(.connecting) { return .connecting }
+        if statuses.contains(.inactive) { return .inactive }
+        return .disabled
+    }
+
+    private func integrationID(for provider: PlaybackProviderID) -> IntegrationID {
+        switch provider {
+        case .appleMusic: .appleMusic
+        case .spotify: .spotify
+        case .youtubeMusic: .youtubeMusic
+        case .tidal: .tidal
+        }
     }
 
     private var playbackIntegrationID: IntegrationID {
@@ -551,6 +618,19 @@ final class Preferences {
     var discordCustomLineTwo: String { didSet { defaults.set(discordCustomLineTwo, forKey: "discordCustomLineTwo") } }
     var discordButtonLabel: String { didSet { defaults.set(discordButtonLabel, forKey: "discordButtonLabel") } }
     var discordSmallImage: DiscordSmallImage { didSet { defaults.set(discordSmallImage.rawValue, forKey: "discordSmallImage") } }
+    var discordLargeImage: DiscordLargeImage { didSet { defaults.set(discordLargeImage.rawValue, forKey: "discordLargeImage") } }
+    var discordActivityType: DiscordActivityType { didSet { defaults.set(discordActivityType.rawValue, forKey: "discordActivityType") } }
+    var discordActivityName: String { didSet { defaults.set(discordActivityName, forKey: "discordActivityName") } }
+    var discordTimerStyle: DiscordTimerStyle {
+        didSet {
+            defaults.set(discordTimerStyle.rawValue, forKey: "discordTimerStyle")
+            showTimer = discordTimerStyle != .hidden
+        }
+    }
+    var discordLargeImageText: String { didSet { defaults.set(discordLargeImageText, forKey: "discordLargeImageText") } }
+    var discordSmallImageText: String { didSet { defaults.set(discordSmallImageText, forKey: "discordSmallImageText") } }
+    var discordSharePaused: Bool { didSet { defaults.set(discordSharePaused, forKey: "discordSharePaused") } }
+    var discordPausedText: String { didSet { defaults.set(discordPausedText, forKey: "discordPausedText") } }
     var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: "launchAtLogin") } }
     var historyRetentionDays: Int { didSet { defaults.set(historyRetentionDays, forKey: "historyRetentionDays") } }
     var discordApplicationID: String { didSet { defaults.set(discordApplicationID, forKey: "discordApplicationID") } }
@@ -576,6 +656,15 @@ final class Preferences {
         discordCustomLineTwo = defaults.string(forKey: "discordCustomLineTwo") ?? "{title} • {album}"
         discordButtonLabel = defaults.string(forKey: "discordButtonLabel") ?? ""
         discordSmallImage = DiscordSmallImage(rawValue: defaults.string(forKey: "discordSmallImage") ?? "") ?? .playbackPlatform
+        discordLargeImage = DiscordLargeImage(rawValue: defaults.string(forKey: "discordLargeImage") ?? "") ?? .artwork
+        discordActivityType = DiscordActivityType(rawValue: defaults.string(forKey: "discordActivityType") ?? "") ?? .listening
+        discordActivityName = defaults.string(forKey: "discordActivityName") ?? "PresenceFM"
+        discordTimerStyle = DiscordTimerStyle(rawValue: defaults.string(forKey: "discordTimerStyle") ?? "")
+            ?? ((defaults.object(forKey: "showTimer") as? Bool ?? true) ? .remaining : .hidden)
+        discordLargeImageText = defaults.string(forKey: "discordLargeImageText") ?? "{album}"
+        discordSmallImageText = defaults.string(forKey: "discordSmallImageText") ?? "Playing on {platform}"
+        discordSharePaused = defaults.object(forKey: "discordSharePaused") as? Bool ?? false
+        discordPausedText = defaults.string(forKey: "discordPausedText") ?? "Paused • {artist}"
         launchAtLogin = defaults.bool(forKey: "launchAtLogin")
         historyRetentionDays = defaults.object(forKey: "historyRetentionDays") as? Int ?? 365
         discordApplicationID = defaults.string(forKey: "discordApplicationID") ?? ""
@@ -608,16 +697,26 @@ enum DiscordLineFormat: String, CaseIterable, Identifiable {
 }
 
 enum DiscordTemplate {
-    static func render(_ template: String, title: String, artist: String, album: String, platform: PlaybackPlatform) -> String {
+    static func render(
+        _ template: String, title: String, artist: String, album: String,
+        platform: PlaybackPlatform, playbackState: String = "Playing",
+        position: TimeInterval = 0, duration: TimeInterval = 0
+    ) -> String {
         var value = template
         let replacements = [
             "{title}": title, "{artist}": artist, "{album}": album,
-            "{platform}": platform.rawValue
+            "{platform}": platform.rawValue, "{state}": playbackState,
+            "{position}": durationLabel(position), "{duration}": durationLabel(duration)
         ]
         for (token, replacement) in replacements { value = value.replacingOccurrences(of: token, with: replacement) }
         // Avoid dangling separators when optional album metadata is unavailable.
         value = value.replacingOccurrences(of: #"\s*[•|–—-]\s*(?=\s*$)"#, with: "", options: .regularExpression)
         value = value.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
         return value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func durationLabel(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval.rounded()))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }

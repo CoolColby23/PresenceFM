@@ -19,7 +19,8 @@ menu-bar panel.
 > PresenceFM detects Apple Music, Spotify, YouTube Music through YTMDesktop, and
 > best-effort TIDAL playback. It can publish configurable Discord Rich Presence,
 > apply Last.fm's listening threshold, and retain failed scrobbles safely for
-> retry.
+> retry. Apple Music Radio works across Now Playing, Discord, local insights,
+> and Last.fm, with a 30-second observed fallback when radio duration is unknown.
 
 ## 0:55–1:25 — credential-free judge path
 

@@ -35,6 +35,7 @@ enum IntegrationPolicy {
     static let playingPollInterval: TimeInterval = 0.5
     static let idlePollInterval: TimeInterval = 2
     static let youtubePollInterval: TimeInterval = 5
+    static let providerHealthRefreshInterval: TimeInterval = 15
     static let scrobbleWorkerInterval: TimeInterval = 30
     static let scrobbleRetryMaximum: TimeInterval = 3_600
     static let lastFMTimeout: TimeInterval = 20
@@ -66,10 +67,22 @@ enum PlaybackProviderID: String, Codable, CaseIterable, Sendable, Identifiable {
 }
 
 enum ProviderHealth: Sendable, Equatable {
+    case disabled
     case available
     case inactive
     case permissionRequired
     case unavailable(String)
+}
+
+struct PlaybackPollMetrics: Sendable, Equatable {
+    let totalDuration: TimeInterval
+    let providerDurations: [PlaybackProviderID: TimeInterval]
+}
+
+struct PlaybackMonitorUpdate: Sendable {
+    let playback: PlaybackSnapshot
+    let providerHealth: [PlaybackProviderID: ProviderHealth]
+    let metrics: PlaybackPollMetrics
 }
 
 struct ProviderSnapshot: Sendable {
@@ -146,7 +159,7 @@ enum IntegrationID: String, Codable, CaseIterable, Sendable, Identifiable {
 }
 
 enum IntegrationState: String, Codable, Sendable {
-    case disabled, connecting, connected, offline, permissionRequired, authorizationExpired, failed
+    case disabled, inactive, connecting, connected, offline, permissionRequired, authorizationExpired, failed
 }
 
 enum RecoveryAction: String, Codable, Sendable {

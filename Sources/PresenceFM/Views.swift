@@ -8,8 +8,11 @@ struct DashboardView: View {
         @Bindable var model = model
         NavigationSplitView {
             List(DashboardSection.allCases, selection: $model.selectedSection) { section in
-                Label(section.rawValue, systemImage: section.symbol).tag(section)
+                Label(section.rawValue, systemImage: section.symbol)
+                    .tag(section)
+                    .accessibilityIdentifier("dashboard.section.\(section.id.rawValue)")
             }
+            .accessibilityIdentifier("dashboard.navigation")
             .navigationTitle("PresenceFM")
             .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
             .safeAreaInset(edge: .bottom) {
@@ -264,7 +267,7 @@ struct ServiceHealthRow: View {
         case .connecting: BrandColors.warning
         case .awaitingPermission, .authorizationExpired: BrandColors.warning
         case .failed: BrandColors.error
-        case .disabled, .offline: BrandColors.neutral
+        case .disabled, .inactive, .offline: BrandColors.neutral
         }
     }
 }
@@ -436,6 +439,7 @@ struct QueueView: View {
                     }
                 }
             }
+            .accessibilityIdentifier("queue.list")
         }
         .navigationTitle("Scrobble Queue")
         .overlay {
@@ -518,6 +522,16 @@ struct DiagnosticsView: View {
                     LabeledContent(health.integration.displayName, value: health.summary)
                         .accessibilityLabel("\(health.integration.displayName), \(health.summary)")
                 }
+            }
+            Section("Playback Polling") {
+                LabeledContent("Latest poll", value: model.playbackPollMetrics.totalDuration.formatted(.number.precision(.fractionLength(1...1))) + " s")
+                ForEach(PlaybackProviderID.allCases) { provider in
+                    if let duration = model.playbackPollMetrics.providerDurations[provider] {
+                        LabeledContent(provider.displayName, value: "\(Int((duration * 1_000).rounded())) ms")
+                    }
+                }
+                Text("Use the PlaybackPolling signposts in Instruments to measure sustained CPU, latency, and energy in a release build.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Recovery") {
                 if model.musicStatus == .awaitingPermission { Button("Open Automation Privacy Settings") { model.openAutomationSettings() } }

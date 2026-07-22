@@ -162,13 +162,32 @@ struct PlaybackSessionTests {
         #expect(!second.contains { if case .started = $0 { true } else { false } })
     }
 
-    @Test func streamIsNeverEligible() async {
-        let stream = TrackMetadata(identity: .init(persistentID: "radio"), title: "Station", artist: "Host", album: nil, duration: 3_600, source: .radioStream, appleMusicURL: nil, artworkReference: nil)
+    @Test func unsupportedLiveStreamIsNeverEligible() async {
+        let stream = TrackMetadata(identity: .init(persistentID: "live"), title: "Station", artist: "Host", album: nil, duration: 3_600, source: .radioStream, appleMusicURL: nil, artworkReference: nil, platform: .youtubeMusic)
         let tracker = PlaybackSessionTracker()
         let start = Date(timeIntervalSince1970: 1_000)
         _ = await tracker.ingest(.init(track: stream, state: .playing, position: 0, observedAt: start, confidence: .high))
         _ = await tracker.ingest(.init(track: stream, state: .playing, position: 300, observedAt: start.addingTimeInterval(300), confidence: .high))
         #expect(await tracker.active?.eligibility == .ineligible)
+    }
+
+    @Test func appleMusicRadioQualifiesAfterObservedListeningAndFinalizesPlayed() async {
+        let tracker = PlaybackSessionTracker()
+        let start = Date(timeIntervalSince1970: 1_000)
+        let radio = TrackMetadata(identity: .init(persistentID: "radio:one"), title: "One", artist: "DJ", album: "Station", duration: 0, source: .radioStream, appleMusicURL: nil, artworkReference: nil)
+        let next = TrackMetadata(identity: .init(persistentID: "radio:two"), title: "Two", artist: "DJ", album: "Station", duration: 0, source: .radioStream, appleMusicURL: nil, artworkReference: nil)
+        _ = await tracker.ingest(.init(track: radio, state: .playing, position: 0, observedAt: start, confidence: .high))
+        for second in 1...30 {
+            _ = await tracker.ingest(.init(track: radio, state: .playing, position: 0, observedAt: start.addingTimeInterval(Double(second)), confidence: .high))
+        }
+        #expect(await tracker.active?.eligibility == .eligible)
+
+        let events = await tracker.ingest(.init(track: next, state: .playing, position: 0, observedAt: start.addingTimeInterval(31), confidence: .high))
+        let finalized = events.compactMap { event -> PlaybackSession? in
+            guard case .finalized(let session) = event else { return nil }
+            return session
+        }.first
+        #expect(finalized?.outcome == .played)
     }
 
     @Test func radioTransitionIsListenedRatherThanSkipped() async {
@@ -200,9 +219,9 @@ struct PlaybackSessionTests {
     }
 
     @Test func ineligiblePresentationExplainsStreams() {
-        let stream = TrackMetadata(identity: .init(persistentID: "radio"), title: "Station", artist: "Host", album: nil, duration: 3_600, source: .radioStream, appleMusicURL: nil, artworkReference: nil)
+        let stream = TrackMetadata(identity: .init(persistentID: "live"), title: "Station", artist: "Host", album: nil, duration: 3_600, source: .radioStream, appleMusicURL: nil, artworkReference: nil, platform: .youtubeMusic)
         let session = PlaybackSession(id: UUID(), track: stream, startedAt: .now, accumulatedPlayTime: 0, lastPosition: 0, eligibility: .ineligible, outcome: .active)
-        #expect(session.scrobblePresentation == .ineligible("Radio is shown in PresenceFM but is not scrobbled."))
+        #expect(session.scrobblePresentation == .ineligible("This live stream does not provide reliable scrobble metadata."))
     }
 }
 
@@ -432,7 +451,7 @@ struct AdditionalPlaybackPlatformTests {
         #expect(snapshot.observedAt == observedAt)
         #expect(track.source == .radioStream)
         #expect(track.artist == "Apple Music 1")
-        #expect(track.isScrobbleable == false)
+        #expect(track.isScrobbleable)
         #expect(track.supportsFiniteProgress == false)
         #expect(track.appleMusicURL?.host == "music.apple.com")
         #expect(track.appleMusicURL?.query == nil)
@@ -536,6 +555,16 @@ struct LastFMTransportTests {
         #expect(body.contains("sk=session"))
         #expect(body.contains("api_sig="))
     }
+
+    @Test func radioScrobbleOmitsUnknownDurationAndMarksTrackAsNotChosen() {
+        let parameters = LastFMClient.scrobbleParameters(
+            title: "Radio Track", artist: "Radio Artist", album: "Station",
+            duration: 0, startedAt: Date(timeIntervalSince1970: 1_000)
+        )
+        #expect(parameters["duration"] == nil)
+        #expect(parameters["chosenByUser"] == "0")
+        #expect(parameters["timestamp"] == "1000")
+    }
 }
 
 private final class TestURLProtocol: URLProtocol, @unchecked Sendable {
@@ -580,10 +609,12 @@ struct PreferencesAndNotificationTests {
         defer { defaults.removePersistentDomain(forName: name) }
         let preferences = Preferences(defaults: defaults)
         preferences.showAlbum = false
+        preferences.discordActivityName = "My music"
         preferences.discordApplicationID = "public-id"
         preferences.privateUntil = Date(timeIntervalSince1970: 123)
         let reloaded = Preferences(defaults: defaults)
         #expect(!reloaded.showAlbum)
+        #expect(reloaded.discordActivityName == "My music")
         #expect(reloaded.discordApplicationID == "public-id")
         #expect(reloaded.privateUntil == Date(timeIntervalSince1970: 123))
     }
@@ -705,6 +736,22 @@ struct PersistenceAndQueueTests {
         store.enqueue(value)
         store.enqueue(value)
         #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == 1)
+    }
+
+    @Test func appleMusicRadioQueuePreservesUnknownDurationSignal() throws {
+        let store = try PersistenceStore(inMemory: true)
+        let track = TrackMetadata(
+            identity: .init(persistentID: "radio:queued"), title: "Radio Track",
+            artist: "Radio Artist", album: "Station", duration: 0,
+            source: .radioStream, appleMusicURL: nil, artworkReference: nil
+        )
+        let value = PlaybackSession(
+            id: UUID(), track: track, startedAt: .now, accumulatedPlayTime: 30,
+            lastPosition: 0, eligibility: .eligible, outcome: .played
+        )
+        store.enqueue(value)
+        let record = try #require(store.context.fetch(FetchDescriptor<ScrobbleRecord>()).first)
+        #expect(record.duration == 0)
     }
 
     @Test func healthHistoryDeduplicatesPerIntegrationAndKeepsLastSuccess() throws {
@@ -941,6 +988,7 @@ struct BackupAndExtendedInsightsTests {
         let source = try PersistenceStore(inMemory: true)
         let sourceDefaults = UserDefaults(suiteName: UUID().uuidString)!
         let preferences = Preferences(defaults: sourceDefaults)
+        preferences.discordActivityName = "Tunes with {artist}"
         let value = session(title: "Café, \"Night\" 🎵", startedAt: .now, platform: .spotify)
         source.record(value)
         source.enqueue(value)
@@ -960,6 +1008,7 @@ struct BackupAndExtendedInsightsTests {
         #expect(restored.title == value.track.title)
         #expect(restored.platformRaw == PlaybackPlatform.spotify.rawValue)
         #expect(try target.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == 1)
+        #expect(targetPreferences.discordActivityName == "Tunes with {artist}")
         #expect(!targetPreferences.lastFMEnabled)
     }
 
@@ -1198,8 +1247,12 @@ struct DemoPlaybackTests {
         preferences.privateMode = false
         #expect(!model.allowsExternalPublishing)
 
+        model.snapshot = DemoPlaybackSequence.snapshot(at: Date(), startedAt: Date())
         model.setDemoModeEnabled(false)
         #expect(model.allowsExternalPublishing)
+        #expect(model.snapshot.track == nil)
+        #expect(model.snapshot.state == .stopped)
+        #expect(model.musicStatus == .connecting)
 
         preferences.privateMode = true
         #expect(!model.allowsExternalPublishing)

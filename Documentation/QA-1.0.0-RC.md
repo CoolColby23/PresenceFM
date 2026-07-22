@@ -8,11 +8,11 @@ an explicit, user-visible accepted risk before publication.
 
 ## Automated and package gates
 
-- [x] Debug and optimized release `swift test` pass: 67 tests across 13 suites; timed Private Mode expiration also passes 10 repeated optimized runs.
+- [x] Debug `swift test` passes: 85 tests across 16 suites, including Discord customization, per-provider monitor reporting, and Apple Music Radio eligibility/queue transport. The earlier optimized Private Mode expiration check also passed 10 repeated runs.
 - [x] Address Sanitizer and Thread Sanitizer test runs pass with no reported memory or data-race issue.
 - [x] The release app builds, signs, and passes strict bundle verification as 1.0.0.
-- [x] Pull-request CI tests Swift code, checks patch hygiene, verifies the website, packages the app, and verifies the DMG.
-- [x] Tagged releases reject a tag that disagrees with `VERSION`, then create a draft release with DMG and checksum artifacts.
+- [x] Pull-request CI uses pinned Xcode 26.0, tests Swift code with a coverage report, checks patch hygiene, verifies the website, packages the app, and verifies the DMG.
+- [x] Tagged releases reject a tag that disagrees with `VERSION`, verify the website and DMG/checksum, then create a draft release with DMG and checksum artifacts.
 - [x] Website metadata, fragments, local assets, sitemap, and robots file pass the dependency-free integrity check.
 - [x] GitHub Pages deployment is defined for website changes on `main`.
 

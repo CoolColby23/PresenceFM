@@ -76,12 +76,14 @@ struct TrackMetadata: Sendable, Hashable, Codable {
     }
 
     var isScrobbleable: Bool {
-        duration > 30 && !isStream &&
-        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasMetadata = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if isAppleMusicRadio { return hasMetadata }
+        return duration > 30 && !isStream && hasMetadata
     }
 
     var isStream: Bool { source == .radioStream || source == .unsupportedStream }
+    var isAppleMusicRadio: Bool { source == .radioStream && platform == .appleMusic }
     var supportsFiniteProgress: Bool { duration > 0 && !isStream }
 }
 
@@ -135,11 +137,14 @@ enum ScrobblePresentationState: Sendable, Equatable {
 }
 
 extension PlaybackSession {
-    var scrobbleThreshold: TimeInterval { min(track.duration * 0.5, 240) }
+    var scrobbleThreshold: TimeInterval {
+        if track.isAppleMusicRadio, track.duration <= 30 { return 30 }
+        return min(track.duration * 0.5, 240)
+    }
 
     var scrobblePresentation: ScrobblePresentationState {
         guard track.isScrobbleable else {
-            if track.isStream { return .ineligible("Radio is shown in PresenceFM but is not scrobbled.") }
+            if track.isStream { return .ineligible("This live stream does not provide reliable scrobble metadata.") }
             if track.duration <= 30 { return .ineligible("Tracks must be longer than 30 seconds.") }
             return .ineligible("Complete title and artist metadata are required.")
         }
@@ -167,12 +172,22 @@ struct DiscordPresence: Sendable, Equatable {
     let buttonLabel: String
     let platform: PlaybackPlatform
     let smallImage: DiscordSmallImage
+    let largeImage: DiscordLargeImage
+    let activityType: DiscordActivityType
+    let activityName: String
+    let largeImageText: String
+    let smallImageText: String
 
     init(
         title: String, state: String, startedAt: Date?, endsAt: Date? = nil,
         appleMusicURL: URL?, artworkURL: URL?,
         buttonLabel: String, platform: PlaybackPlatform = .appleMusic,
-        smallImage: DiscordSmallImage = .presenceFM
+        smallImage: DiscordSmallImage = .presenceFM,
+        largeImage: DiscordLargeImage = .artwork,
+        activityType: DiscordActivityType = .listening,
+        activityName: String = "PresenceFM",
+        largeImageText: String = "",
+        smallImageText: String = ""
     ) {
         self.title = title
         self.state = state
@@ -183,7 +198,41 @@ struct DiscordPresence: Sendable, Equatable {
         self.buttonLabel = buttonLabel
         self.platform = platform
         self.smallImage = smallImage
+        self.largeImage = largeImage
+        self.activityType = activityType
+        self.activityName = activityName
+        self.largeImageText = largeImageText
+        self.smallImageText = smallImageText
     }
+}
+
+enum DiscordActivityType: String, Sendable, CaseIterable, Identifiable {
+    case listening = "Listening to"
+    case playing = "Playing"
+    case watching = "Watching"
+    var id: Self { self }
+
+    var payloadValue: Int {
+        switch self {
+        case .playing: 0
+        case .listening: 2
+        case .watching: 3
+        }
+    }
+}
+
+enum DiscordTimerStyle: String, Sendable, CaseIterable, Identifiable {
+    case elapsed = "Elapsed time"
+    case remaining = "Time remaining"
+    case hidden = "Hidden"
+    var id: Self { self }
+}
+
+enum DiscordLargeImage: String, Sendable, CaseIterable, Identifiable {
+    case artwork = "Album artwork"
+    case playbackPlatform = "Music platform logo"
+    case presenceFM = "PresenceFM logo"
+    var id: Self { self }
 }
 
 enum DiscordSmallImage: String, Sendable, CaseIterable, Identifiable {
@@ -195,6 +244,7 @@ enum DiscordSmallImage: String, Sendable, CaseIterable, Identifiable {
 
 enum ServiceStatus: Sendable, Equatable {
     case disabled
+    case inactive
     case awaitingPermission
     case connecting
     case connected
@@ -205,6 +255,7 @@ enum ServiceStatus: Sendable, Equatable {
     var label: String {
         switch self {
         case .disabled: "Disabled"
+        case .inactive: "Not active"
         case .awaitingPermission: "Permission required"
         case .connecting: "Connecting"
         case .connected: "Connected"
@@ -221,6 +272,7 @@ extension ServiceStatus {
     var integrationState: IntegrationState {
         switch self {
         case .disabled: .disabled
+        case .inactive: .inactive
         case .awaitingPermission: .permissionRequired
         case .connecting: .connecting
         case .connected: .connected
@@ -231,7 +283,7 @@ extension ServiceStatus {
     }
 }
 
-protocol PlaybackProviding: Sendable { func snapshots() async -> AsyncStream<PlaybackSnapshot> }
+protocol PlaybackProviding: Sendable { func snapshots() async -> AsyncStream<PlaybackMonitorUpdate> }
 protocol PresencePublishing: Sendable {
     func publish(_ presence: DiscordPresence) async throws
     func clear() async

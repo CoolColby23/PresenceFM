@@ -38,6 +38,7 @@ recorded, GitHub's latest published release remains the stable download.
 
 - Apple Music, Spotify, YouTube Music through YTMDesktop, and best-effort TIDAL playback detection.
 - Platform-aware Discord presentation with configurable lines, artwork, progress, badges, buttons, and links.
+- Discord activity styles, elapsed or countdown timers, large/small image choices, hover text, paused-state sharing, reusable presets, and templates for track, platform, state, position, and duration.
 - Stricter Last.fm response validation, reliable retry behavior, privacy-redacted support reports, and a branded DMG.
 - Versioned persistence migration, rollback backups, transactional backup/restore, and bounded local diagnostics.
 - Expanded local insights with period comparisons, top tracks and albums, hourly listening, platform summaries, and a stable CSV v1 export.
@@ -74,6 +75,8 @@ Artwork is read from Apple Music and stored only in a bounded temporary cache. M
 
 PresenceFM releases are ad-hoc signed because the project does not use a paid Apple Developer account. macOS cannot notarize these builds, so the first launch requires the Control-click **Open** flow described above.
 
+After installation, PresenceFM checks the official GitHub release feed for updates. Use **PresenceFM → Check for Updates…** at any time, or manage automatic checks and downloads under **Settings → Updates**. Update archives are verified with PresenceFM's Sparkle EdDSA signing key before installation.
+
 ## Build from source
 
 ```sh
@@ -90,7 +93,7 @@ Each user supplies their own Last.fm API key and shared secret during onboarding
 
 ## Scrobbling behavior
 
-A track becomes eligible after listening to 50% of its duration or four minutes, whichever comes first. Tracks of 30 seconds or less and tracks with incomplete metadata are not scrobbled. Apple Music radio and other live streams still appear in Now Playing, Discord presence, and local listening history, but are labeled as radio and are not sent to Last.fm because stream timing is not reliable. Eligible submissions are deduplicated and retained locally for retry when Last.fm is unavailable.
+A track becomes eligible after listening to 50% of its duration or four minutes, whichever comes first. Tracks of 30 seconds or less and tracks with incomplete metadata are not scrobbled. Apple Music Radio songs with usable title and artist metadata use the normal threshold when duration is available, or 30 seconds of directly observed playback when it is unknown. PresenceFM omits radio duration and marks the scrobble as radio-selected. Other unsupported live streams remain visible in Now Playing, Discord presence, and local history but are not sent to Last.fm. Eligible submissions are deduplicated and retained locally for retry when Last.fm is unavailable.
 
 See [PLAN.md](PLAN.md) for planned work, plus [PRIVACY.md](PRIVACY.md),
 [SECURITY.md](SECURITY.md), [SUPPORT.md](SUPPORT.md), and

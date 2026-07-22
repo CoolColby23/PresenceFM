@@ -1,6 +1,7 @@
 import AppKit
 import CryptoKit
 import Foundation
+import os
 
 enum PlaybackSourceSelector {
     static func select(
@@ -19,10 +20,15 @@ actor PlaybackMonitor: PlaybackProviding {
     private let clock: any AppClock
     private let providers: [PlaybackProviderID: any PlaybackProvider]
     private let coordinator = PlaybackCoordinator()
-    private var continuation: AsyncStream<PlaybackSnapshot>.Continuation?
+    private var continuation: AsyncStream<PlaybackMonitorUpdate>.Continuation?
     private var monitoringTask: Task<Void, Never>?
     private var enabledProviders = Set(PlaybackProviderID.allCases)
     private var demoStartedAt: Date?
+    private var latestHealth = Dictionary(
+        uniqueKeysWithValues: PlaybackProviderID.allCases.map { ($0, ProviderHealth.inactive) }
+    )
+    private var lastFullHealthRefresh = Date.distantPast
+    private let performanceLog = OSLog(subsystem: "fm.presence.PresenceFM", category: "PlaybackPolling")
 
     init(
         credentials: CredentialStore,
@@ -38,7 +44,7 @@ actor PlaybackMonitor: PlaybackProviding {
         ]
     }
 
-    func snapshots() -> AsyncStream<PlaybackSnapshot> {
+    func snapshots() -> AsyncStream<PlaybackMonitorUpdate> {
         AsyncStream { continuation in
             self.continuation = continuation
             monitoringTask?.cancel()
@@ -53,47 +59,93 @@ actor PlaybackMonitor: PlaybackProviding {
 
     func setEnabledProviders(_ providers: Set<PlaybackProviderID>) {
         enabledProviders = providers
+        for id in PlaybackProviderID.allCases where !providers.contains(id) { latestHealth[id] = .disabled }
     }
 
     func setDemoModeEnabled(_ enabled: Bool) {
         demoStartedAt = enabled ? clock.now : nil
         if let demoStartedAt {
-            continuation?.yield(DemoPlaybackSequence.snapshot(at: clock.now, startedAt: demoStartedAt))
+            continuation?.yield(PlaybackMonitorUpdate(
+                playback: DemoPlaybackSequence.snapshot(at: clock.now, startedAt: demoStartedAt),
+                providerHealth: Dictionary(uniqueKeysWithValues: PlaybackProviderID.allCases.map { ($0, .disabled) }),
+                metrics: PlaybackPollMetrics(totalDuration: 0, providerDurations: [:])
+            ))
         }
     }
 
     private func poll() async {
         while !Task.isCancelled {
-            let snapshot = await readPlayback()
-            continuation?.yield(snapshot)
+            let update = await readPlayback()
+            continuation?.yield(update)
             // Music does not expose a reliable public callback for every playback change.
             // Keep the fallback poll quick enough that track transitions feel immediate.
-            let interval = snapshot.state == .playing
+            let interval = update.playback.state == .playing
                 ? IntegrationPolicy.playingPollInterval
                 : IntegrationPolicy.idlePollInterval
             try? await clock.sleep(until: clock.now.addingTimeInterval(interval))
         }
     }
 
-    private func readPlayback() async -> PlaybackSnapshot {
+    private func readPlayback() async -> PlaybackMonitorUpdate {
         if let demoStartedAt {
-            return DemoPlaybackSequence.snapshot(at: clock.now, startedAt: demoStartedAt)
+            return PlaybackMonitorUpdate(
+                playback: DemoPlaybackSequence.snapshot(at: clock.now, startedAt: demoStartedAt),
+                providerHealth: Dictionary(uniqueKeysWithValues: PlaybackProviderID.allCases.map { ($0, .disabled) }),
+                metrics: PlaybackPollMetrics(totalDuration: 0, providerDurations: [:])
+            )
         }
+        let pollStartedAt = Date()
+        let refreshesAllHealth = clock.now.timeIntervalSince(lastFullHealthRefresh)
+            >= IntegrationPolicy.providerHealthRefreshInterval
+        let signpostID = OSSignpostID(log: performanceLog)
+        os_signpost(.begin, log: performanceLog, name: "Playback poll", signpostID: signpostID)
         var snapshots: [ProviderSnapshot] = []
+        var durations: [PlaybackProviderID: TimeInterval] = [:]
         for id in [PlaybackProviderID.appleMusic, .spotify] where enabledProviders.contains(id) {
-            if let provider = providers[id] { snapshots.append(await provider.snapshot()) }
+            if let provider = providers[id] {
+                let measured = await measuredSnapshot(provider)
+                snapshots.append(measured.snapshot); durations[id] = measured.duration
+            }
         }
         let preliminary = await coordinator.select(snapshots, now: clock.now)
-        if preliminary.state == .playing { return preliminary }
+        if preliminary.state == .playing && !refreshesAllHealth {
+            return finishUpdate(preliminary, startedAt: pollStartedAt, durations: durations, signpostID: signpostID)
+        }
         if enabledProviders.contains(.youtubeMusic), let provider = providers[.youtubeMusic] {
-            snapshots.append(await provider.snapshot())
+            let measured = await measuredSnapshot(provider)
+            snapshots.append(measured.snapshot); durations[.youtubeMusic] = measured.duration
             let withYouTube = await coordinator.select(snapshots, now: clock.now)
-            if withYouTube.state == .playing { return withYouTube }
+            if withYouTube.state == .playing && !refreshesAllHealth {
+                return finishUpdate(withYouTube, startedAt: pollStartedAt, durations: durations, signpostID: signpostID)
+            }
         }
         if enabledProviders.contains(.tidal), let provider = providers[.tidal] {
-            snapshots.append(await provider.snapshot())
+            let measured = await measuredSnapshot(provider)
+            snapshots.append(measured.snapshot); durations[.tidal] = measured.duration
         }
-        return await coordinator.select(snapshots, now: clock.now)
+        let playback = await coordinator.select(snapshots, now: clock.now)
+        if refreshesAllHealth { lastFullHealthRefresh = clock.now }
+        return finishUpdate(playback, startedAt: pollStartedAt, durations: durations, signpostID: signpostID)
+    }
+
+    private func measuredSnapshot(_ provider: any PlaybackProvider) async -> (snapshot: ProviderSnapshot, duration: TimeInterval) {
+        let startedAt = Date()
+        let result = await provider.snapshot()
+        latestHealth[provider.id] = result.health
+        return (result, Date().timeIntervalSince(startedAt))
+    }
+
+    private func finishUpdate(
+        _ playback: PlaybackSnapshot, startedAt: Date,
+        durations: [PlaybackProviderID: TimeInterval], signpostID: OSSignpostID
+    ) -> PlaybackMonitorUpdate {
+        for id in PlaybackProviderID.allCases where !enabledProviders.contains(id) { latestHealth[id] = .disabled }
+        let duration = Date().timeIntervalSince(startedAt)
+        os_signpost(.end, log: performanceLog, name: "Playback poll", signpostID: signpostID, "duration_ms=%{public}.2f", duration * 1_000)
+        return PlaybackMonitorUpdate(
+            playback: playback, providerHealth: latestHealth,
+            metrics: PlaybackPollMetrics(totalDuration: duration, providerDurations: durations)
+        )
     }
 
     nonisolated static func readMusic() -> PlaybackSnapshot {

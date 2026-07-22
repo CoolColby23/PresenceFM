@@ -14,8 +14,10 @@ DISCORD_APPLICATION_ID="${PRESENCEFM_DISCORD_APPLICATION_ID:-1525555974390153346
 APP="$ROOT/PresenceFM.app"
 CONTENTS="$APP/Contents"
 rm -rf "$APP"
-mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
+mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$CONTENTS/Frameworks"
 cp "$BIN_DIR/PresenceFM" "$CONTENTS/MacOS/PresenceFM"
+cp -R "$BIN_DIR/Sparkle.framework" "$CONTENTS/Frameworks/Sparkle.framework"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$CONTENTS/MacOS/PresenceFM"
 cp "$ROOT/brand/PresenceFM.icns" "$CONTENTS/Resources/PresenceFM.icns"
 RESOURCE_BUNDLE="$BIN_DIR/PresenceFM_PresenceFM.bundle"
 [[ -n "$RESOURCE_BUNDLE" && -d "$RESOURCE_BUNDLE" ]] || {
@@ -36,6 +38,10 @@ plutil -insert CFBundleVersion -string "$BUILD_NUMBER" "$CONTENTS/Info.plist"
 plutil -insert LSMinimumSystemVersion -string 15.0 "$CONTENTS/Info.plist"
 plutil -insert NSAppleEventsUsageDescription -string "PresenceFM reads the track currently playing in Apple Music. It does not control playback or modify your library." "$CONTENTS/Info.plist"
 plutil -insert NSHumanReadableCopyright -string "PresenceFM contributors" "$CONTENTS/Info.plist"
+plutil -insert SUFeedURL -string "https://github.com/CoolColby23/PresenceFM/releases/latest/download/appcast.xml" "$CONTENTS/Info.plist"
+plutil -insert SUPublicEDKey -string "NAio4ba6lGI+Or7NZiCwfkF0NXkixmZjkAvesHK2zGY=" "$CONTENTS/Info.plist"
+plutil -insert SUEnableAutomaticChecks -bool true "$CONTENTS/Info.plist"
+plutil -insert SUAllowsAutomaticUpdates -bool true "$CONTENTS/Info.plist"
 
 plutil -insert PRESENCEFM_DISCORD_APPLICATION_ID -string "$DISCORD_APPLICATION_ID" "$CONTENTS/Info.plist"
 
@@ -45,12 +51,15 @@ if [[ "${PRESENCEFM_SKIP_SIGNING:-0}" != "1" ]]; then
     SIGNING_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -n 1)"
   fi
   if [[ -n "$SIGNING_IDENTITY" ]]; then
+    codesign --force --deep --options runtime --timestamp=none \
+      --sign "$SIGNING_IDENTITY" "$CONTENTS/Frameworks/Sparkle.framework"
     codesign --force --options runtime --timestamp=none \
       --entitlements "$ROOT/Distribution.entitlements" \
       --sign "$SIGNING_IDENTITY" "$APP"
     codesign --verify --deep --strict --verbose=2 "$APP"
     echo "Signed with $SIGNING_IDENTITY"
   else
+    codesign --force --deep --sign - "$CONTENTS/Frameworks/Sparkle.framework"
     codesign --force --sign - --entitlements "$ROOT/Distribution.entitlements" "$APP"
     codesign --verify --deep --strict --verbose=2 "$APP"
     echo "Ad-hoc signed (no paid Apple Developer account required)"

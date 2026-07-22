@@ -121,7 +121,10 @@ enum PresenceFMSchemaV1: VersionedSchema {
         init(session: PlaybackSession, now: Date = .now) {
             id = UUID(); duplicateKey = session.duplicateKey
             title = session.track.title; artist = session.track.artist; album = session.track.album
-            startedAt = session.startedAt; duration = session.track.duration
+            startedAt = session.startedAt
+            // A zero duration is the queue's durable signal for Apple Music Radio:
+            // the Last.fm client omits unknown duration and marks it as radio-selected.
+            duration = session.track.isAppleMusicRadio ? 0 : session.track.duration
             attempts = 0; nextAttemptAt = now; stateRaw = QueueState.pending.rawValue
         }
 

@@ -38,31 +38,43 @@ actor DiscordPresenceClient: PresencePublishing {
     }
 
     nonisolated static func activityPayload(for presence: DiscordPresence) -> [String: Any] {
-        let largeImage = presence.artworkURL?.absoluteString ?? ReleaseConfiguration.discordApplicationIconURL
+        let largeImage = switch presence.largeImage {
+        case .artwork: presence.artworkURL?.absoluteString ?? ReleaseConfiguration.discordApplicationIconURL
+        case .playbackPlatform: presence.platform.discordSmallImageURL
+        case .presenceFM: ReleaseConfiguration.discordApplicationIconURL
+        }
         let details = bounded(presence.title, fallback: "Listening on \(presence.platform.rawValue)")
         let state = bounded(presence.state, fallback: presence.platform.rawValue)
-        // Discord renders large_text as another visible metadata row for listening
-        // activities. Keep the album artwork, but omit that label so the configured
-        // title/state lines are not repeated underneath it.
         var assets = ["large_image": largeImage]
+        let largeText = presence.largeImageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !largeText.isEmpty { assets["large_text"] = bounded(largeText, fallback: presence.platform.rawValue) }
         switch presence.smallImage {
         case .presenceFM:
             assets["small_image"] = ReleaseConfiguration.discordApplicationIconURL
-            assets["small_text"] = "Shared with PresenceFM"
+            assets["small_text"] = bounded(presence.smallImageText, fallback: "Shared with PresenceFM")
         case .playbackPlatform:
             assets["small_image"] = presence.platform.discordSmallImageURL
-            assets["small_text"] = "Playing on \(presence.platform.rawValue)"
+            assets["small_text"] = bounded(presence.smallImageText, fallback: "Playing on \(presence.platform.rawValue)")
         case .none: break
         }
         var activity: [String: Any] = [
-            "type": 2, "details": details, "state": state,
+            "type": presence.activityType.payloadValue,
+            "name": bounded(presence.activityName, fallback: "PresenceFM"),
+            "details": details, "state": state,
             "assets": assets
         ]
+        var timestamps: [String: Int] = [:]
         if let startedAt = presence.startedAt {
-            var timestamps = ["start": Int(startedAt.timeIntervalSince1970 * 1_000)]
-            if let endsAt = presence.endsAt, endsAt > startedAt {
+            timestamps["start"] = Int(startedAt.timeIntervalSince1970 * 1_000)
+        }
+        if let endsAt = presence.endsAt {
+            if let startedAt = presence.startedAt {
+                if endsAt > startedAt { timestamps["end"] = Int(endsAt.timeIntervalSince1970 * 1_000) }
+            } else {
                 timestamps["end"] = Int(endsAt.timeIntervalSince1970 * 1_000)
             }
+        }
+        if !timestamps.isEmpty {
             activity["timestamps"] = timestamps
         }
         if let url = presence.appleMusicURL {
