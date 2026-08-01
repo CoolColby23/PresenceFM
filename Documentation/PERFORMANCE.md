@@ -10,16 +10,18 @@ The Diagnostics screen reports the latest total poll latency and the latency of 
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Idle | 0.390% | 2.3% | 102.9 MiB average; 137.8 MiB peak | Not recorded | Not recorded |
 | Playing | Not recorded | Not recorded | Not recorded | Not recorded | Not recorded |
-| Demo mixed playback | 3.675% | 42.6% | 170.8 MiB average; 218.4 MiB peak | Not recorded | Not recorded |
+| Demo mixed playback | 2.252% | 11.4% | 119.0 MiB average; 119.4 MiB peak | Not recorded | Not recorded |
 
-On August 1, 2026, the Apple Development-signed 1.0.0 (1) release build from
-implementation commit `729ec1b` was sampled with `ps` every five seconds for
-five minutes per state on an arm64 Mac running macOS 27.0 (26A5388g). The idle
-run passes the CPU and memory budgets. Demo Mode rotates accelerated tracks and
-safe gaps, so it is not a substitute for the normal playing scenario; it also
-exceeded both the 3% average-CPU and 150 MB memory budgets. Normal account-backed
-playback, Instruments poll-latency capture, launch-to-dashboard timing, and the
-four-hour soak remain release blockers.
+On August 1, 2026, the Apple Development-signed 1.0.0 (1) release build was
+sampled with `ps` every five seconds for five minutes per state on an arm64 Mac
+running macOS 27.0 (26A5388g). The idle run from implementation commit
+`729ec1b` passes the CPU and memory budgets. A clean Demo Mode run after commit
+`44de90b` also passes, averaging 2.252% CPU and 119.0 MiB resident memory while
+accelerated track changes exercised history retention. Unlike the earlier
+3.675%/170.8 MiB sample, no accessibility automation ran concurrently. Demo
+Mode is not a substitute for normal account-backed playback; Instruments poll
+latency, launch-to-dashboard timing, and the four-hour soak remain release
+blockers.
 
 ## 1.0 release-candidate spot check
 
