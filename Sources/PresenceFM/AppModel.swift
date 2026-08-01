@@ -36,6 +36,7 @@ final class AppModel {
     var lastFMUsername = ""
     var hasStoredLastFMCredentials = false
     var artworkData: Data?
+    var artworkImage: NSImage?
     var discordArtworkURL: URL?
     var demoModeEnabled = false
     let preferences: Preferences
@@ -133,7 +134,7 @@ final class AppModel {
                 applyProviderHealth(update.providerHealth)
                 if changedTrack {
                     artworkTask?.cancel()
-                    artworkData = nil
+                    setArtworkData(nil)
                     discordArtworkURL = nil
                 }
                 let nextMusicStatus = aggregatePlaybackStatus(for: value)
@@ -376,7 +377,7 @@ final class AppModel {
         demoModeEnabled = enabled
         pendingScrobbleSessionIDs.removeAll()
         artworkTask?.cancel()
-        artworkData = nil
+        setArtworkData(nil)
         discordArtworkURL = nil
         if !enabled {
             // Do not leave synthetic metadata publishable while the monitor switches
@@ -467,13 +468,13 @@ final class AppModel {
 
     private func updateArtwork(for track: TrackMetadata?) async {
         guard let track else {
-            artworkTask?.cancel(); artworkData = nil; discordArtworkURL = nil
+            artworkTask?.cancel(); setArtworkData(nil); discordArtworkURL = nil
             return
         }
         let identity = track.identity
         let data = await artwork.artwork(for: track)
         guard snapshot.track?.identity == identity else { return }
-        artworkData = data
+        setArtworkData(data)
         if let data {
             store.backfillArtwork(for: identity.persistentID, artworkData: data)
         }
@@ -488,12 +489,17 @@ final class AppModel {
             }
             guard !Task.isCancelled, self.snapshot.track?.identity == identity else { return }
             if let downloadedData {
-                self.artworkData = downloadedData
+                self.setArtworkData(downloadedData)
                 self.store.backfillArtwork(for: identity.persistentID, artworkData: downloadedData)
             }
             self.discordArtworkURL = publicURL
             await self.updateDiscord()
         }
+    }
+
+    private func setArtworkData(_ data: Data?) {
+        artworkData = data
+        artworkImage = data.flatMap(NSImage.init(data:))
     }
 
     private func schedulePrivacyExpiration() {

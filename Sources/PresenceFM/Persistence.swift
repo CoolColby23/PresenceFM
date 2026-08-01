@@ -225,7 +225,7 @@ final class PersistenceStore {
 
     func record(_ session: PlaybackSession, artworkData: Data? = nil) {
         context.insert(ActivityRecord(session: session, artworkData: artworkData))
-        trim(ActivityRecord.self, limit: IntegrationPolicy.activityRecordLimit, sort: [SortDescriptor(\.startedAt, order: .reverse)])
+        trim(ActivityRecord.self, limit: IntegrationPolicy.activityRecordLimit, oldestFirst: [SortDescriptor(\.startedAt)])
         removeActivity(olderThanDays: Preferences.shared.historyRetentionDays)
         save()
     }
@@ -298,7 +298,7 @@ final class PersistenceStore {
 
     func log(_ category: String, _ message: String) {
         context.insert(DiagnosticRecord(category: category, message: Redactor.redact(message)))
-        trim(DiagnosticRecord.self, limit: IntegrationPolicy.diagnosticRecordLimit, sort: [SortDescriptor(\.timestamp, order: .reverse)])
+        trim(DiagnosticRecord.self, limit: IntegrationPolicy.diagnosticRecordLimit, oldestFirst: [SortDescriptor(\.timestamp)])
         save()
     }
 
@@ -311,7 +311,7 @@ final class PersistenceStore {
         if let latest = try? context.fetch(descriptor).first,
            latest.stateRaw == state.rawValue { return }
         context.insert(IntegrationHealthEvent(integration: integration, state: state, timestamp: timestamp))
-        trim(IntegrationHealthEvent.self, limit: IntegrationPolicy.healthEventLimit, sort: [SortDescriptor(\.timestamp, order: .reverse)])
+        trim(IntegrationHealthEvent.self, limit: IntegrationPolicy.healthEventLimit, oldestFirst: [SortDescriptor(\.timestamp)])
         save()
     }
 
@@ -350,10 +350,17 @@ final class PersistenceStore {
         return .rejected(message)
     }
 
-    private func trim<T: PersistentModel>(_ type: T.Type, limit: Int, sort: [SortDescriptor<T>]) {
-        let descriptor = FetchDescriptor<T>(sortBy: sort)
-        guard let records = try? context.fetch(descriptor), records.count > limit else { return }
-        records.dropFirst(limit).forEach(context.delete)
+    private func trim<T: PersistentModel>(
+        _ type: T.Type,
+        limit: Int,
+        oldestFirst: [SortDescriptor<T>]
+    ) {
+        let countDescriptor = FetchDescriptor<T>()
+        guard let count = try? context.fetchCount(countDescriptor), count > limit else { return }
+        var overflowDescriptor = FetchDescriptor<T>(sortBy: oldestFirst)
+        overflowDescriptor.fetchLimit = count - limit
+        guard let overflow = try? context.fetch(overflowDescriptor) else { return }
+        overflow.forEach(context.delete)
     }
 
     private func removeActivity(olderThanDays days: Int) {

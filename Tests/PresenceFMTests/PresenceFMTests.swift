@@ -766,6 +766,31 @@ struct PersistenceAndQueueTests {
         #expect(store.lastSuccessfulIntegrationDate(.lastFM) == second)
     }
 
+    @Test func healthHistoryTrimsOnlyOverflowRecords() throws {
+        let store = try PersistenceStore(inMemory: true)
+        let start = Date(timeIntervalSince1970: 10_000)
+        let overflow = 5
+
+        for index in 0..<(IntegrationPolicy.healthEventLimit + overflow) {
+            store.recordHealth(
+                .discord,
+                state: index.isMultiple(of: 2) ? .connected : .offline,
+                at: start.addingTimeInterval(TimeInterval(index))
+            )
+        }
+
+        let descriptor = FetchDescriptor<IntegrationHealthEvent>(
+            sortBy: [SortDescriptor(\.timestamp)]
+        )
+        let records = try store.context.fetch(descriptor)
+        #expect(records.count == IntegrationPolicy.healthEventLimit)
+        #expect(records.first?.timestamp == start.addingTimeInterval(TimeInterval(overflow)))
+        #expect(
+            records.last?.timestamp
+                == start.addingTimeInterval(TimeInterval(IntegrationPolicy.healthEventLimit + overflow - 1))
+        )
+    }
+
     @Test func retryResetsPermanentFailure() throws {
         let store = try PersistenceStore(inMemory: true)
         store.enqueue(session())

@@ -62,7 +62,7 @@ struct NowPlayingView: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .center, spacing: 34) {
                         ArtworkView(
-                            data: model.artworkData,
+                            image: model.artworkImage,
                             size: 260,
                             accessibilityDescription: artworkAccessibilityDescription
                         )
@@ -71,7 +71,7 @@ struct NowPlayingView: View {
                     }
                     VStack(spacing: 24) {
                         ArtworkView(
-                            data: model.artworkData,
+                            image: model.artworkImage,
                             size: 200,
                             accessibilityDescription: artworkAccessibilityDescription
                         )
@@ -169,7 +169,7 @@ struct NowPlayingView: View {
 
     private var artworkAccessibilityDescription: String {
         guard let track = model.snapshot.track else { return "Album artwork unavailable" }
-        return model.artworkData == nil ? "Album artwork unavailable for \(track.title)" : "Album artwork for \(track.title)"
+        return model.artworkImage == nil ? "Album artwork unavailable for \(track.title)" : "Album artwork for \(track.title)"
     }
 
     private var discordRecoveryTitle: String? {
@@ -185,11 +185,27 @@ struct NowPlayingView: View {
 
 struct ArtworkView: View {
     let data: Data?
+    let image: NSImage?
     let size: CGFloat
     var accessibilityDescription: String? = nil
+
+    init(data: Data?, size: CGFloat, accessibilityDescription: String? = nil) {
+        self.data = data
+        image = nil
+        self.size = size
+        self.accessibilityDescription = accessibilityDescription
+    }
+
+    init(image: NSImage?, size: CGFloat, accessibilityDescription: String? = nil) {
+        data = nil
+        self.image = image
+        self.size = size
+        self.accessibilityDescription = accessibilityDescription
+    }
+
     var body: some View {
         Group {
-            if let data, let image = NSImage(data: data) {
+            if let image = image ?? data.flatMap(NSImage.init(data:)) {
                 Image(nsImage: image).resizable().scaledToFill()
             } else {
                 ZStack {
@@ -202,7 +218,7 @@ struct ArtworkView: View {
         .clipShape(.rect(cornerRadius: size * 0.1))
         .overlay { RoundedRectangle(cornerRadius: size * 0.1).stroke(.white.opacity(0.12)) }
         .shadow(color: .black.opacity(0.22), radius: size * 0.08, y: size * 0.04)
-        .accessibilityLabel(accessibilityDescription ?? (data == nil ? "Album artwork unavailable" : "Album artwork"))
+        .accessibilityLabel(accessibilityDescription ?? (image == nil && data == nil ? "Album artwork unavailable" : "Album artwork"))
     }
 }
 
@@ -377,7 +393,7 @@ struct MenuBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 14) {
-                ArtworkView(data: model.artworkData, size: 68)
+                ArtworkView(image: model.artworkImage, size: 68)
                 VStack(alignment: .leading) {
                     Text(model.snapshot.track?.title ?? "Nothing Playing").font(.headline).lineLimit(1)
                     Text(model.snapshot.track?.artist ?? "Choose a connected music app").foregroundStyle(.secondary).lineLimit(1)
