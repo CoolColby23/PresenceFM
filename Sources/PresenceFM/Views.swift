@@ -59,40 +59,27 @@ struct NowPlayingView: View {
                     .frame(maxWidth: 820)
                     .accessibilityElement(children: .contain)
                 }
-                HStack(alignment: .center, spacing: 34) {
-                    ArtworkView(data: model.artworkData, size: 260)
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text(playbackLabel).font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-                        Text(model.snapshot.track?.title ?? "Nothing Playing")
-                            .font(.system(size: 38, weight: .bold, design: .rounded)).lineLimit(2)
-                        Text(metadataLabel).font(.title2).foregroundStyle(.secondary).lineLimit(2)
-                        if let track = model.snapshot.track {
-                            if track.supportsFiniteProgress {
-                                PlaybackProgress(position: model.snapshot.position, duration: track.duration)
-                            }
-                            ScrobbleProgress(state: model.scrobblePresentation)
-                            if let url = track.appleMusicURL {
-                                Link("Open in \(track.platform.rawValue)", destination: url).presenceButton()
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 8) {
-                                if model.demoModeEnabled {
-                                    Text("Starting safe demo playback…")
-                                } else {
-                                    Text("Play something in a supported music app and PresenceFM will pick it up automatically.")
-                                    Text("Apple Music · Spotify · YouTube Music · TIDAL")
-                                        .font(.callout.weight(.medium))
-                                    Button("Start Demo Playback", systemImage: "play.fill") {
-                                        model.setDemoModeEnabled(true)
-                                    }
-                                    .presenceButton(prominent: true)
-                                    .help("Try PresenceFM without a music app or service account")
-                                }
-                            }
-                            .foregroundStyle(.secondary)
-                        }
-                    }.frame(maxWidth: 520, alignment: .leading)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 34) {
+                        ArtworkView(
+                            data: model.artworkData,
+                            size: 260,
+                            accessibilityDescription: artworkAccessibilityDescription
+                        )
+                        nowPlayingDetails
+                            .frame(minWidth: 380, maxWidth: 520, alignment: .leading)
+                    }
+                    VStack(spacing: 24) {
+                        ArtworkView(
+                            data: model.artworkData,
+                            size: 200,
+                            accessibilityDescription: artworkAccessibilityDescription
+                        )
+                        nowPlayingDetails
+                            .frame(maxWidth: 520, alignment: .leading)
+                    }
                 }
+                .frame(maxWidth: 820)
                 Divider()
                 VStack(spacing: 0) {
                     ServiceHealthRow(
@@ -130,6 +117,47 @@ struct NowPlayingView: View {
         }.navigationTitle("Now Playing")
     }
 
+    private var nowPlayingDetails: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(playbackLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            Text(model.snapshot.track?.title ?? "Nothing Playing")
+                .font(.largeTitle.bold())
+                .lineLimit(2)
+            Text(metadataLabel)
+                .font(.title2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            if let track = model.snapshot.track {
+                if track.supportsFiniteProgress {
+                    PlaybackProgress(position: model.snapshot.position, duration: track.duration)
+                }
+                ScrobbleProgress(state: model.scrobblePresentation)
+                if let url = track.appleMusicURL {
+                    Link("Open in \(track.platform.rawValue)", destination: url).presenceButton()
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    if model.demoModeEnabled {
+                        Text("Starting safe demo playback…")
+                    } else {
+                        Text("Play something in a supported music app and PresenceFM will pick it up automatically.")
+                        Text("Apple Music · Spotify · YouTube Music · TIDAL")
+                            .font(.callout.weight(.medium))
+                        Button("Start Demo Playback", systemImage: "play.fill") {
+                            model.setDemoModeEnabled(true)
+                        }
+                        .presenceButton(prominent: true)
+                        .help("Try PresenceFM without a music app or service account")
+                    }
+                }
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private var playbackLabel: String {
         switch model.snapshot.state { case .playing: "Now playing"; case .paused: "Paused"; case .stopped: "PresenceFM is ready" }
     }
@@ -137,6 +165,11 @@ struct NowPlayingView: View {
     private var metadataLabel: String {
         guard let track = model.snapshot.track else { return "Waiting for playback" }
         return "\(track.artist)\(track.album.map { " • \($0)" } ?? "")"
+    }
+
+    private var artworkAccessibilityDescription: String {
+        guard let track = model.snapshot.track else { return "Album artwork unavailable" }
+        return model.artworkData == nil ? "Album artwork unavailable for \(track.title)" : "Album artwork for \(track.title)"
     }
 
     private var discordRecoveryTitle: String? {
@@ -153,6 +186,7 @@ struct NowPlayingView: View {
 struct ArtworkView: View {
     let data: Data?
     let size: CGFloat
+    var accessibilityDescription: String? = nil
     var body: some View {
         Group {
             if let data, let image = NSImage(data: data) {
@@ -168,7 +202,7 @@ struct ArtworkView: View {
         .clipShape(.rect(cornerRadius: size * 0.1))
         .overlay { RoundedRectangle(cornerRadius: size * 0.1).stroke(.white.opacity(0.12)) }
         .shadow(color: .black.opacity(0.22), radius: size * 0.08, y: size * 0.04)
-        .accessibilityLabel(data == nil ? "Album artwork unavailable" : "Album artwork")
+        .accessibilityLabel(accessibilityDescription ?? (data == nil ? "Album artwork unavailable" : "Album artwork"))
     }
 }
 
@@ -178,7 +212,11 @@ struct PlaybackProgress: View {
     var body: some View {
         VStack(spacing: 6) {
             ProgressView(value: min(max(position, 0), duration), total: max(duration, 1))
-                .tint(BrandColors.electricBlue).accessibilityLabel("Playback progress")
+                .tint(BrandColors.electricBlue)
+                .accessibilityLabel("Playback progress")
+                .accessibilityValue(
+                    "\(position.formattedDuration) elapsed, \(max(0, duration - position).formattedDuration) remaining"
+                )
             HStack {
                 Text(position.formattedDuration)
                 Spacer()
@@ -232,40 +270,52 @@ struct ServiceHealthRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: symbol)
-                .font(.title3)
-                .foregroundStyle(BrandColors.electricBlue)
-                .frame(width: 28)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 14) {
+                Image(systemName: symbol)
+                    .font(.title3)
+                    .foregroundStyle(BrandColors.electricBlue)
+                    .frame(width: 28)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.headline)
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                ServiceStatusIndicator(status: status, labelOverride: statusLabelOverride)
+                Text(statusLabelOverride ?? status.label)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            Spacer()
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
-            Text(statusLabelOverride ?? status.label)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(title), \(statusLabelOverride ?? status.label)")
             if let recoveryTitle {
                 Button(recoveryTitle, action: recoveryAction)
+                    .accessibilityHint("Attempts to recover the \(title) connection")
             }
         }
         .padding(.vertical, 14)
         .contentShape(.rect)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title), \(statusLabelOverride ?? status.label)")
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct ServiceStatusIndicator: View {
+    let status: ServiceStatus
+    let labelOverride: String?
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 8, height: 8)
+            .accessibilityHidden(true)
     }
 
-    private var statusColor: Color {
-        if statusLabelOverride != nil { return BrandColors.neutral }
+    private var color: Color {
+        if labelOverride != nil { return BrandColors.neutral }
         return switch status {
         case .connected: BrandColors.success
-        case .connecting: BrandColors.warning
-        case .awaitingPermission, .authorizationExpired: BrandColors.warning
+        case .connecting, .awaitingPermission, .authorizationExpired: BrandColors.warning
         case .failed: BrandColors.error
         case .disabled, .inactive, .offline: BrandColors.neutral
         }
@@ -361,7 +411,13 @@ struct CompactStatus: View {
     let status: ServiceStatus
     let statusLabelOverride: String?
     var body: some View {
-        HStack { Circle().fill(statusLabelOverride == nil && status.isConnected ? BrandColors.success : BrandColors.neutral).frame(width: 7, height: 7); Text(name); Spacer(); Text(statusLabelOverride ?? status.label).foregroundStyle(.secondary) }
+        HStack {
+            ServiceStatusIndicator(status: status, labelOverride: statusLabelOverride)
+                .scaleEffect(0.875)
+            Text(name)
+            Spacer()
+            Text(statusLabelOverride ?? status.label).foregroundStyle(.secondary)
+        }
             .font(.caption)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(name), \(statusLabelOverride ?? status.label)")

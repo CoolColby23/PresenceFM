@@ -1024,6 +1024,18 @@ struct BackupAndExtendedInsightsTests {
         #expect(insights.platformCounts == [PlatformListenCount(platform: PlaybackPlatform.appleMusic.rawValue, plays: 1)])
     }
 
+    @Test func comparisonOmitsAnEmptyPriorPeriod() throws {
+        let store = try PersistenceStore(inMemory: true)
+        let now = Date.now
+        store.record(session(title: "Current", startedAt: now.addingTimeInterval(-86_400), platform: .appleMusic))
+        let records = try store.context.fetch(FetchDescriptor<ActivityRecord>())
+        let insights = ExtendedListeningInsights(records: records, period: .week, now: now)
+
+        #expect(insights.comparison.current.listens == 1)
+        #expect(insights.comparison.previous == nil)
+        #expect(insights.comparison.listenDelta == nil)
+    }
+
     @Test func csvV1HasFrozenColumnsAndUnicode() throws {
         let store = try PersistenceStore(inMemory: true)
         store.record(session(title: "夜, \"Song\" 🎵", startedAt: .now, platform: .youtubeMusic))

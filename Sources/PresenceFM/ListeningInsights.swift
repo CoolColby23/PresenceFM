@@ -25,7 +25,12 @@ enum HistoryPeriod: String, CaseIterable, Identifiable {
     }
 
     var dayCount: Int? {
-        switch self { case .week: 7; case .month: 30; case .quarter: 90; case .all: nil }
+        switch self {
+        case .week: 7;
+        case .month: 30;
+        case .quarter: 90;
+        case .all: nil
+        }
     }
 }
 
@@ -130,11 +135,17 @@ struct ExtendedListeningInsights {
         let current = records.filter { record in currentStart.map { record.startedAt >= $0 } ?? true }
         let previous: [ActivityRecord]?
         if let days = period.dayCount,
-           let start = currentStart,
-           let previousStart = calendar.date(byAdding: .day, value: -days, to: start) {
+            let start = currentStart,
+            let previousStart = calendar.date(byAdding: .day, value: -days, to: start)
+        {
             previous = records.filter { $0.startedAt >= previousStart && $0.startedAt < start }
-        } else { previous = nil }
-        comparison = MetricComparison(current: Self.metrics(current), previous: previous.map(Self.metrics))
+        } else {
+            previous = nil
+        }
+        comparison = MetricComparison(
+            current: Self.metrics(current),
+            previous: previous.flatMap { $0.isEmpty ? nil : Self.metrics($0) }
+        )
 
         let played = current.filter(\.countsAsListen)
         topTracks = Self.rank(played) { ($0.title, $0.artist) }
@@ -161,7 +172,9 @@ struct ExtendedListeningInsights {
     @MainActor private static func rank(
         _ records: [ActivityRecord], key: (ActivityRecord) -> (String, String?)
     ) -> [RankedListen] {
-        let grouped = Dictionary(grouping: records) { let value = key($0); return "\(value.0)|\(value.1 ?? "")" }
+        let grouped = Dictionary(grouping: records) {
+            let value = key($0); return "\(value.0)|\(value.1 ?? "")"
+        }
         return grouped.compactMap { _, values in
             guard let first = values.first else { return nil }
             let value = key(first)
@@ -191,7 +204,7 @@ enum HistoryCSVExporter {
                 "1", record.id.uuidString, formatter.string(from: record.startedAt),
                 record.finalizedAt.map(formatter.string) ?? "", record.title, record.artist,
                 record.album ?? "", record.platformRaw ?? "Unknown platform", record.outcomeLabel,
-                duration, listenedTime, record.persistentID ?? ""
+                duration, listenedTime, record.persistentID ?? "",
             ]
             rows.append(fields.map { csvField($0) }.joined(separator: ","))
         }
