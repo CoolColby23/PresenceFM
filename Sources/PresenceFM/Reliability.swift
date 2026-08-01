@@ -32,7 +32,7 @@ struct ClosureAppClock: AppClock {
 }
 
 enum IntegrationPolicy {
-    static let playingPollInterval: TimeInterval = 0.5
+    static let playingPollInterval: TimeInterval = 1
     static let idlePollInterval: TimeInterval = 2
     static let youtubePollInterval: TimeInterval = 5
     static let providerHealthRefreshInterval: TimeInterval = 15
@@ -105,8 +105,9 @@ actor PlaybackCoordinator {
         let ordered = PlaybackProviderID.allCases.compactMap { byProvider[$0] }
 
         if let activeProvider,
-           let active = byProvider[activeProvider]?.playback,
-           active.state == .playing {
+            let active = byProvider[activeProvider]?.playback,
+            active.state == .playing
+        {
             return active
         }
         if let selected = ordered.compactMap(\.playback).first(where: { $0.state == .playing }) {
@@ -114,8 +115,9 @@ actor PlaybackCoordinator {
             return selected
         }
         if let activeProvider,
-           let active = byProvider[activeProvider]?.playback,
-           active.state == .paused {
+            let active = byProvider[activeProvider]?.playback,
+            active.state == .paused
+        {
             return active
         }
         if let selected = ordered.compactMap(\.playback).first(where: { $0.state == .paused }) {

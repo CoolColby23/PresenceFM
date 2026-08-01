@@ -7,6 +7,7 @@
 - Let returning users close onboarding without completing it, and preload their current player, integration, and launch preferences so rerunning the tour cannot silently reset configuration.
 - Make Now Playing and insight cards adapt cleanly to narrower windows, improve playback progress announcements, and keep recovery buttons independently reachable by keyboard and VoiceOver.
 - Clarify Listening History with an explicit early-skip definition, a consistently labeled seven-day activity chart, and honest “No prior data” comparisons.
+- Reduce playback polling to once per second and avoid publishing unchanged service status, preventing redundant SwiftUI invalidation and integration-health writes.
 - Add a credential-free Demo Mode with a one-command launch and dashboard controls that exercise the real playback, eligibility, and local-history pipeline while visibly pausing Discord and Last.fm publishing.
 - Add Apple Music Radio metadata to Now Playing, Discord presence, local insights, and Last.fm; use the normal duration threshold or a 30-second observed fallback, omit radio duration, and mark radio scrobbles as not chosen by the user while continuing to exclude unsupported live streams.
 - Stop treating every unfinished or transiently unavailable track as skipped; recover brief provider gaps, credit an already-playing song's observed position, and distinguish listened radio, true track replacements, and interrupted sessions.

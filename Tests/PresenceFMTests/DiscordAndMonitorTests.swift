@@ -1,5 +1,7 @@
 import Foundation
+import SwiftData
 import Testing
+
 @testable import PresenceFM
 
 @Suite("Discord customization")
@@ -108,6 +110,30 @@ struct PlaybackMonitorReportingTests {
         #expect(update.providerHealth[.tidal] == .disabled)
         #expect(update.metrics.providerDurations[.appleMusic] != nil)
     }
+}
+
+@Suite("Observable status updates")
+struct ObservableStatusUpdateTests {
+    @Test @MainActor func repeatedStatusDoesNotWriteDuplicateHealth() throws {
+        let store = try PersistenceStore(inMemory: true)
+        let preferences = try #require(UserDefaults(suiteName: "PresenceFMTests.status.\(UUID().uuidString)"))
+        let model = AppModel(
+            store: store,
+            preferences: Preferences(defaults: preferences),
+            notifications: NotificationCoordinator(delivery: StatusTestNotificationDelivery())
+        )
+
+        model.discordStatus = .connected
+        model.discordStatus = .connected
+
+        #expect(try store.context.fetchCount(FetchDescriptor<IntegrationHealthEvent>()) == 1)
+    }
+}
+
+@MainActor
+private final class StatusTestNotificationDelivery: NotificationDelivering {
+    func requestAuthorization() async -> Bool { true }
+    func deliver(identifier: String, title: String, body: String, section: DashboardSection) async {}
 }
 
 private struct StubPlaybackProvider: PlaybackProvider {
