@@ -75,7 +75,7 @@ Artwork is read from Apple Music and stored only in a bounded temporary cache. M
 
 PresenceFM releases are ad-hoc signed because the project does not use a paid Apple Developer account. macOS cannot notarize these builds, so the first launch requires the Control-click **Open** flow described above.
 
-After installation, PresenceFM checks the official GitHub release feed for updates. Use **PresenceFM → Check for Updates…** at any time, or manage automatic checks and downloads under **Settings → Updates**. Update archives are verified with PresenceFM's Sparkle EdDSA signing key before installation.
+After installation, PresenceFM checks the official GitHub release feed for updates. Use **PresenceFM → Check for Updates…** at any time, or manage automatic checks and downloads under **Settings → General → Updates**. Update archives are verified with PresenceFM's Sparkle EdDSA signing key before installation.
 
 ## Build from source
 

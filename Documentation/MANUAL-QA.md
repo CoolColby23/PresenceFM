@@ -61,7 +61,7 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 
 ## Lifecycle and compatibility
 
-- Choose **PresenceFM → Check for Updates…** and confirm the current-version result is shown. Repeat from **Settings → Updates**.
+- Choose **PresenceFM → Check for Updates…** and confirm the current-version result is shown. Repeat from **Settings → General → Updates**.
 - Toggle automatic update checks and downloads, relaunch, and confirm both preferences persist. Confirm automatic downloads are unavailable when automatic checks are disabled.
 - From an older signed test build pointed at a test appcast, download and install the newer DMG in app, relaunch, and confirm the displayed version/build changed without losing local data or preferences.
 - Tamper with a signed update archive and confirm PresenceFM refuses to install it.

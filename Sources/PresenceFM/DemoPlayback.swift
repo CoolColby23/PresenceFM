@@ -17,7 +17,7 @@ enum DemoPlaybackSequence {
     private static let tracks = [
         DemoTrack(title: "Midnight Signal", artist: "The Satellites", album: "Afterglow", platform: .appleMusic),
         DemoTrack(title: "Electric Morning", artist: "Neon Valley", album: "Daybreak", platform: .spotify),
-        DemoTrack(title: "Open Skies", artist: "Northbound", album: "Windows Down", platform: .youtubeMusic)
+        DemoTrack(title: "Open Skies", artist: "Northbound", album: "Windows Down", platform: .youtubeMusic),
     ]
 
     static func snapshot(at now: Date, startedAt: Date) -> PlaybackSnapshot {
