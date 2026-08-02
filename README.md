@@ -43,6 +43,8 @@ recorded, GitHub's latest published release remains the stable download.
 - Versioned persistence migration, rollback backups, transactional backup/restore, and bounded local diagnostics.
 - Expanded local insights with period comparisons, top tracks and albums, hourly listening, platform summaries, and a stable CSV v1 export.
 - Keyboard shortcuts for every dashboard destination, clearer VoiceOver onboarding progress, and confirmations for destructive queue and account actions.
+- Configurable provider priority, correction-before-retry for rejected scrobbles, and metadata-free release-verification snapshots.
+- Shortcuts actions for Private Mode, privacy status, and opening the dashboard.
 
 Listening insights are calculated entirely on this Mac from PresenceFM's local activity records. They are never uploaded by PresenceFM.
 
@@ -53,6 +55,13 @@ Listening insights are calculated entirely on this Mac from PresenceFM's local a
 - Searchable local listening activity and direct recovery actions when a service needs attention.
 - Timed Private Mode that automatically resumes integrations when the selected period ends.
 - Actionable, deduplicated notifications for permission loss, expired Last.fm authorization, and persistently stuck scrobbles.
+- Locally advancing playback progress between provider polls, with VoiceOver announcements throttled to meaningful 15-second changes.
+
+Provider order is configurable under **Settings → Players**. PresenceFM retains an already-playing provider to avoid false transitions; the configured order decides simultaneous starts.
+
+The Queue screen can correct rejected title, artist, and album metadata before retrying while retaining the original listen timestamp and duplicate protection. Diagnostics can copy or save a release-verification snapshot that excludes track metadata, usernames, credentials, and paths.
+
+PresenceFM exposes Shortcuts actions to start or end Private Mode, check privacy status, and open the dashboard.
 
 Artwork is read from Apple Music and stored only in a bounded temporary cache. Missing or unsupported artwork falls back to the PresenceFM mark.
 

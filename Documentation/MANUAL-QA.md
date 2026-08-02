@@ -18,6 +18,7 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 - Verify YouTube Music live streams are visible but never scrobbled.
 - Verify TIDAL playback through macOS Now Playing for play, pause, seek, skip, app quit, sleep/wake, and relaunch. Record the macOS and TIDAL versions because this provider uses a best-effort system metadata surface.
 - Play from two providers simultaneously and verify PresenceFM selects one deterministically, changes source without duplicate activity, and recovers when the selected provider closes.
+- Reorder providers under **Settings → Players**, relaunch, and confirm the order persists and decides a simultaneous start without displacing an already-playing source.
 - Confirm a permission or metadata failure in one provider does not hide valid playback from another.
 
 ## Discord
@@ -41,6 +42,7 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 - Revoke the Last.fm session and confirm authorization-expired state plus a usable reauthorization path.
 - Disconnect Last.fm in Settings and confirm scrobbling is disabled while the API key and shared secret remain available for reauthorization.
 - Exercise retry and remove actions on failed queue records.
+- Correct a permanently rejected scrobble, confirm blank title/artist cannot be saved, then verify the corrected metadata submits once with its original listen time.
 - Search recent activity by title, artist, and album; confirm empty and no-match states are distinct.
 
 ## Notifications and recovery
@@ -49,6 +51,7 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 - Trigger lost Automation permission, expired Last.fm authorization, and three queue failures; confirm each condition produces at most one redacted notification.
 - Click each notification and confirm PresenceFM opens the corresponding Diagnostics, Settings, or Queue section.
 - Exercise Automation Settings, Discord reconnect, Last.fm reconnect, and queue retry actions from the app.
+- Run the Shortcuts actions for starting/ending Private Mode, checking privacy status, and opening the dashboard. Confirm starting Private Mode immediately clears Discord and suppresses Last.fm.
 
 ## Listening history
 
@@ -70,3 +73,5 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 - Run on macOS 15–25 and confirm standard materials/buttons render correctly.
 - Run on macOS 26 and confirm Liquid Glass styling renders correctly.
 - Review Diagnostics and GitHub issue text for tokens, application secrets, usernames in paths, or other sensitive data.
+- Copy and save the Diagnostics release-verification snapshot. Confirm it includes environment, health, latency, and bounded-count evidence but no track metadata, usernames, credentials, or local paths.
+- With VoiceOver focused on playback progress, confirm visual time advances between provider polls while the spoken value changes no more often than every 15 seconds.

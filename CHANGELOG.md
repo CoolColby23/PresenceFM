@@ -9,6 +9,11 @@
 - Clarify Listening History with an explicit early-skip definition, a consistently labeled seven-day activity chart, and honest “No prior data” comparisons.
 - Reduce playback polling to once per second and avoid publishing unchanged service status, preventing redundant SwiftUI invalidation and integration-health writes.
 - Bound persistence-retention fetches and reuse decoded current artwork, reducing memory and CPU churn during long playback sessions.
+- Let users reorder playback-provider priority while retaining an actively playing source, and persist a repaired complete order across relaunches.
+- Add a metadata-free release-verification snapshot with environment, service-health, poll-latency, queue, history, diagnostics, health-history, and artwork-cache counts.
+- Add Shortcuts actions to start or end Private Mode, check privacy status, and open the PresenceFM dashboard, including verified App Intents package metadata.
+- Let rejected scrobbles be corrected and retried without changing their original listen time or duplicate protection.
+- Advance playback progress locally between provider polls, limit VoiceOver progress-value changes to 15-second intervals, and enforce a tested narrow dashboard minimum.
 - Add a credential-free Demo Mode with a one-command launch and dashboard controls that exercise the real playback, eligibility, and local-history pipeline while visibly pausing Discord and Last.fm publishing.
 - Add Apple Music Radio metadata to Now Playing, Discord presence, local insights, and Last.fm; use the normal duration threshold or a 30-second observed fallback, omit radio duration, and mark radio scrobbles as not chosen by the user while continuing to exclude unsupported live streams.
 - Stop treating every unfinished or transiently unavailable track as skipped; recover brief provider gaps, credit an already-playing song's observed position, and distinguish listened radio, true track replacements, and interrupted sessions.

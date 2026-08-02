@@ -8,13 +8,13 @@ an explicit, user-visible accepted risk before publication.
 
 ## Automated and package gates
 
-- [x] At implementation commit `44de90b`, debug `swift test` passes on arm64 macOS 27.0 (26A5388g): 88 tests across 17 suites, including Discord customization, per-provider monitor reporting, Apple Music Radio eligibility/queue transport, demo playback, backup/extended-insight behavior, empty-period comparison behavior, duplicate observable-status suppression, and bounded oldest-first health-history retention. The earlier optimized Private Mode expiration check also passed 10 repeated runs.
+- [x] At implementation commit `28c0e25`, debug `swift test` passes on arm64 macOS 27.0 (26A5388g): 96 tests across 17 suites, including configurable provider priority and concrete reorder-action labels, metadata-free verification export, rejected-scrobble correction, Private Mode intent actions, locally advancing progress with throttled accessibility values, responsive minimum-size contracts, duplicate observable-status suppression, and bounded oldest-first health-history retention. The earlier optimized Private Mode expiration check also passed 10 repeated runs.
 - [x] Address Sanitizer and Thread Sanitizer test runs pass with no reported memory or data-race issue.
-- [x] At implementation commit `44de90b`, the release app builds, receives an Apple Development signature, and passes strict bundle verification as 1.0.0 build 1. The 4,595,639-byte DMG passes `hdiutil verify` with SHA-256 `f943d5d23b28c0e167c3300265a259b52e2a71adf2c5e68db9968b50d60f597e`.
+- [x] At implementation commit `28c0e25`, the release app builds, receives an Apple Development signature, and passes strict bundle verification as 1.0.0 build 1, including discoverable metadata for all three App Intents. The 4,687,408-byte DMG passes `hdiutil verify` with SHA-256 `73807145ebe4e6aaaf4479379284856863f753235cb23dacea4b92c7c6279596`.
 - [x] Pull-request CI uses pinned Xcode 26.0, tests Swift code with a coverage report, checks patch hygiene, verifies the website, packages the app, and verifies the DMG.
 - [x] Tagged releases reject a tag that disagrees with `VERSION`, verify the website and DMG/checksum, then create a draft release with DMG and checksum artifacts.
 - [x] Website metadata, fragments, local assets, sitemap, and robots file pass the dependency-free integrity check.
-- [x] The verified 1.0.0 build 1 bundle from implementation commit `44de90b` was installed in `/Applications` on the arm64 macOS 27.0 test machine; its executable SHA-256 matches the packaged source bundle and the app remained running in Demo Mode after launch.
+- [x] The verified 1.0.0 build 1 bundle from implementation commit `28c0e25` was installed in `/Applications` on the arm64 macOS 27.0 test machine after final package verification; executable SHA-256 `b415d7afa44b665aad04c22323540bc57043826ac20fabd334bb99a80083f89b` matched the packaged source bundle and the app remained running after a normal launch.
 - [x] GitHub Pages deployment is defined for website changes on `main`.
 
 ## App interaction evidence
@@ -25,6 +25,7 @@ an explicit, user-visible accepted risk before publication.
 - [x] The packaged 1.0.0 app launches in Demo Mode on macOS 27.0 (26A5388g); Now Playing, playback/scrobble progress, service state, Listening History cards, empty Queue, Diagnostics, and all five Settings categories render without visible clipping at the supported window size.
 - [x] Last.fm disconnection presents consequences and can be canceled without changing the account.
 - [x] Onboarding exposes its current step to accessibility and supports Return navigation. A returning user can close the tour with its labeled Close button or Escape, and rerunning it preloads the current player, integration, and launch-at-login preferences.
+- [x] On the installed `28c0e25` package, the macOS accessibility tree exposes all five Settings categories and their visible controls. Provider reorder buttons are independent elements with concrete labels such as “Move Spotify earlier”; an initial literal interpolation label was caught during this pass, fixed, and covered by a regression test before reinstalling.
 - [ ] Complete a full keyboard and VoiceOver traversal of onboarding, settings, queue, history filters, diagnostics, and menu-bar controls.
 - [ ] Verify increased contrast, reduced motion, and the supported macOS accessibility display settings.
 
@@ -68,10 +69,11 @@ The following evidence is still required and is not represented as a pass:
 - The local macOS accessibility bridge did not return the packaged app's window
   tree, so the current package does not have a newly recorded keyboard,
   VoiceOver, increased-contrast, reduced-motion, or narrow-window traversal.
-- The clean five-minute accelerated Demo Mode sample at `44de90b` passes the
-  playing CPU and memory budgets at 2.252% average CPU and 119.0 MiB average
-  resident memory. It does not substitute for normal account-backed playback;
-  poll latency, launch timing, and the four-hour soak remain unverified.
+- The clean five-minute accelerated Demo Mode sample at `28c0e25` passes the
+  playing CPU and memory budgets at 2.105% average CPU and 117.7 MiB average
+  resident memory, with 7.3% CPU and 125.5 MiB peaks. It does not substitute for
+  normal account-backed playback; poll latency, launch timing, and the four-hour
+  soak remain unverified.
 - Live Apple Music, Spotify, YTMDesktop, TIDAL, Discord, and Last.fm account
   matrices were not exercised during this verification run.
 - macOS 15 through 26 and Intel coverage are unavailable. These are unaccepted
