@@ -4,20 +4,11 @@ set -euo pipefail
 ROOT="${0:A:h:h}"
 cd "$ROOT"
 "$ROOT/scripts/sync-brand-assets.sh"
-INTENT_CONSTANTS_DIRECTORY="$ROOT/.build/presencefm-app-intents"
-INTENT_CONSTANTS="$INTENT_CONSTANTS_DIRECTORY/PresenceFM.swiftconstvalues"
-INTENT_PROTOCOLS="$ROOT/scripts/AppIntentsConstantValueProtocols.json"
-[[ -f "$INTENT_PROTOCOLS" ]] || {
-  echo "App Intents constant-value protocol list was not found" >&2
-  exit 1
-}
-mkdir -p "$INTENT_CONSTANTS_DIRECTORY"
-rm -f "$INTENT_CONSTANTS"
-swift build -c release \
-  -Xswiftc -const-gather-protocols-list \
-  -Xswiftc "$INTENT_PROTOCOLS" \
-  -Xswiftc -emit-const-values-path \
-  -Xswiftc "$INTENT_CONSTANTS"
+BUILD_ARGUMENTS=(-c release)
+if ! swiftc -help-hidden 2>&1 | grep -q -- '-const-gather-protocols-list'; then
+  BUILD_ARGUMENTS+=(-Xswiftc -emit-const-values)
+fi
+swift build "${BUILD_ARGUMENTS[@]}"
 BIN_DIR="$(swift build -c release --show-bin-path)"
 
 VERSION="${PRESENCEFM_VERSION:-$(<"$ROOT/VERSION")}"

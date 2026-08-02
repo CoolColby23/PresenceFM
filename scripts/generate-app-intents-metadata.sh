@@ -13,21 +13,16 @@ CONST_LIST="$(mktemp /tmp/presencefm-intent-constants.XXXXXX)"
 trap 'rm -f "$SOURCE_LIST" "$CONST_LIST"' EXIT
 
 find "$ROOT/Sources/PresenceFM" -name '*.swift' -type f -print | sort > "$SOURCE_LIST"
-EXPLICIT_CONST_VALUES="$ROOT/.build/presencefm-app-intents/PresenceFM.swiftconstvalues"
-if [[ -s "$EXPLICIT_CONST_VALUES" ]]; then
-    print -r -- "$EXPLICIT_CONST_VALUES" > "$CONST_LIST"
-else
-    while IFS= read -r constant_values; do
-        case "$constant_values" in
-            */Debug/*|*/debug/*|*PresenceFMTests*|*-testable-*)
-                continue
-                ;;
-            */PresenceFM.build/*|*/PresenceFM-p.build/*)
-                print -r -- "$constant_values"
-                ;;
-        esac
-    done < <(find "$ROOT/.build" -name '*.swiftconstvalues' -type f -print) | sort > "$CONST_LIST"
-fi
+while IFS= read -r constant_values; do
+    case "$constant_values" in
+        */Debug/*|*/debug/*|*PresenceFMTests*|*-testable-*|*/presencefm-app-intents/*)
+            continue
+            ;;
+        */PresenceFM.build/*|*/PresenceFM-p.build/*)
+            print -r -- "$constant_values"
+            ;;
+    esac
+done < <(find "$ROOT/.build" -name '*.swiftconstvalues' -type f -print) | sort > "$CONST_LIST"
 
 [[ -s "$CONST_LIST" ]] || {
     echo "Release App Intents constant metadata was not produced" >&2
