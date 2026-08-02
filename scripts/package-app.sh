@@ -4,7 +4,13 @@ set -euo pipefail
 ROOT="${0:A:h:h}"
 cd "$ROOT"
 "$ROOT/scripts/sync-brand-assets.sh"
-swift build -c release
+INTENT_CONSTANTS_DIRECTORY="$ROOT/.build/presencefm-app-intents"
+INTENT_CONSTANTS="$INTENT_CONSTANTS_DIRECTORY/PresenceFM.swiftconstvalues"
+mkdir -p "$INTENT_CONSTANTS_DIRECTORY"
+rm -f "$INTENT_CONSTANTS"
+swift build -c release \
+  -Xswiftc -emit-const-values-path \
+  -Xswiftc "$INTENT_CONSTANTS"
 BIN_DIR="$(swift build -c release --show-bin-path)"
 
 VERSION="${PRESENCEFM_VERSION:-$(<"$ROOT/VERSION")}"
