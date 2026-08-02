@@ -38,6 +38,7 @@ struct DashboardView: View {
                 PersistenceRecoveryBanner(message: issue)
             }
         }
+        .frame(minWidth: DashboardLayout.minimumWidth, minHeight: DashboardLayout.minimumHeight)
     }
 }
 
@@ -132,7 +133,7 @@ struct NowPlayingView: View {
                 .lineLimit(2)
             if let track = model.snapshot.track {
                 if track.supportsFiniteProgress {
-                    PlaybackProgress(position: model.snapshot.position, duration: track.duration)
+                    PlaybackProgress(snapshot: model.snapshot, duration: track.duration)
                 }
                 ScrobbleProgress(state: model.scrobblePresentation)
                 if let url = track.appleMusicURL {
@@ -222,24 +223,9 @@ struct ArtworkView: View {
     }
 }
 
-struct PlaybackProgress: View {
-    let position: TimeInterval
-    let duration: TimeInterval
-    var body: some View {
-        VStack(spacing: 6) {
-            ProgressView(value: min(max(position, 0), duration), total: max(duration, 1))
-                .tint(BrandColors.electricBlue)
-                .accessibilityLabel("Playback progress")
-                .accessibilityValue(
-                    "\(position.formattedDuration) elapsed, \(max(0, duration - position).formattedDuration) remaining"
-                )
-            HStack {
-                Text(position.formattedDuration)
-                Spacer()
-                Text("−\(max(0, duration - position).formattedDuration)")
-            }.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-        }
-    }
+enum DashboardLayout {
+    static let minimumWidth: CGFloat = 640
+    static let minimumHeight: CGFloat = 520
 }
 
 struct ScrobbleProgress: View {
@@ -308,11 +294,16 @@ struct ServiceHealthRow: View {
             if let recoveryTitle {
                 Button(recoveryTitle, action: recoveryAction)
                     .accessibilityHint("Attempts to recover the \(title) connection")
+                    .accessibilityIdentifier("recovery.\(recoveryIdentifier)")
             }
         }
         .padding(.vertical, 14)
         .contentShape(.rect)
         .accessibilityElement(children: .contain)
+    }
+
+    private var recoveryIdentifier: String {
+        title.lowercased().replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
     }
 }
 
@@ -401,7 +392,7 @@ struct MenuBarView: View {
             }
             if let track = model.snapshot.track {
                 if track.supportsFiniteProgress {
-                    PlaybackProgress(position: model.snapshot.position, duration: track.duration)
+                    PlaybackProgress(snapshot: model.snapshot, duration: track.duration)
                 }
                 ScrobbleProgress(state: model.scrobblePresentation)
             }
@@ -476,6 +467,7 @@ struct QueueView: View {
     @Environment(AppModel.self) private var model
     @Query(sort: \ScrobbleRecord.startedAt, order: .reverse) private var records: [ScrobbleRecord]
     @State private var pendingRemoval: QueueRemoval?
+    @State private var correction: QueueCorrection?
     var body: some View {
         VStack(spacing: 0) {
             if let commonError {
@@ -499,14 +491,20 @@ struct QueueView: View {
                         Spacer()
                         Text(record.stateRaw.queueDisplayName).foregroundStyle(.secondary)
                         Menu("Actions", systemImage: "ellipsis.circle") {
-                            if record.state == .permanentlyFailed { Button("Retry") { model.retryScrobble(id: record.id) } }
+                            if record.state == .permanentlyFailed {
+                                Button("Edit and Retry…") { requestCorrection(of: record) }
+                                Button("Retry Without Changes") { model.retryScrobble(id: record.id) }
+                            }
                             Button("Remove…", role: .destructive) { requestRemoval(of: record) }
                         }
                         .menuIndicator(.hidden)
                         .accessibilityLabel("Actions for \(record.title)")
                     }
                     .contextMenu {
-                        if record.state == .permanentlyFailed { Button("Retry") { model.retryScrobble(id: record.id) } }
+                        if record.state == .permanentlyFailed {
+                            Button("Edit and Retry…") { requestCorrection(of: record) }
+                            Button("Retry Without Changes") { model.retryScrobble(id: record.id) }
+                        }
                         Button("Remove…", role: .destructive) { requestRemoval(of: record) }
                     }
                 }
@@ -536,6 +534,18 @@ struct QueueView: View {
         } message: { removal in
             Text("This removes “\(removal.title)” from the local retry queue. It cannot be submitted to Last.fm afterward.")
         }
+        .sheet(item: $correction) { draft in
+            QueueCorrectionView(draft: draft) { updated in
+                if model.correctScrobble(
+                    id: updated.id,
+                    title: updated.title,
+                    artist: updated.artist,
+                    album: updated.album
+                ) {
+                    correction = nil
+                }
+            }
+        }
     }
 
     private var queuedRecords: [ScrobbleRecord] { records.filter { $0.state != .submitted } }
@@ -548,6 +558,15 @@ struct QueueView: View {
 
     private func requestRemoval(of record: ScrobbleRecord) {
         pendingRemoval = QueueRemoval(id: record.id, title: record.title)
+    }
+
+    private func requestCorrection(of record: ScrobbleRecord) {
+        correction = QueueCorrection(
+            id: record.id,
+            title: record.title,
+            artist: record.artist,
+            album: record.album ?? ""
+        )
     }
 }
 
@@ -615,6 +634,14 @@ struct DiagnosticsView: View {
                 Text(model.diagnosticCopyStatus.isEmpty ? "Includes app, macOS, connection status, and the latest redacted diagnostic messages. It excludes credentials and listening metadata." : model.diagnosticCopyStatus)
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Release Verification") {
+                HStack {
+                    Button("Copy Snapshot", systemImage: "doc.on.doc", action: model.copyVerificationReport)
+                    Button("Save Snapshot…", systemImage: "square.and.arrow.down", action: model.saveVerificationReport)
+                }
+                Text(model.verificationExportStatus.isEmpty ? "Exports version, environment, provider health, poll timing, and bounded local-data counts. Track metadata, usernames, credentials, and paths are excluded." : model.verificationExportStatus)
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Redacted Log") { ForEach(records.prefix(50)) { record in Text("[\(record.category)] \(record.message)").font(.caption.monospaced()) } }
             Section("Local Integration Health") {
                 if healthEvents.isEmpty { Text("No integration state changes recorded yet.").foregroundStyle(.secondary) }
@@ -670,7 +697,7 @@ private struct PersistenceRecoveryBanner: View {
     }
 }
 
-private extension TimeInterval {
+extension TimeInterval {
     var formattedDuration: String {
         let total = max(0, Int(self.rounded()))
         return String(format: "%d:%02d", total / 60, total % 60)

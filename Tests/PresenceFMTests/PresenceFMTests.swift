@@ -612,11 +612,40 @@ struct PreferencesAndNotificationTests {
         preferences.discordActivityName = "My music"
         preferences.discordApplicationID = "public-id"
         preferences.privateUntil = Date(timeIntervalSince1970: 123)
+        preferences.playbackProviderOrder = [.spotify, .appleMusic, .tidal, .youtubeMusic]
         let reloaded = Preferences(defaults: defaults)
         #expect(!reloaded.showAlbum)
         #expect(reloaded.discordActivityName == "My music")
         #expect(reloaded.discordApplicationID == "public-id")
         #expect(reloaded.privateUntil == Date(timeIntervalSince1970: 123))
+        #expect(reloaded.playbackProviderOrder == [.spotify, .appleMusic, .tidal, .youtubeMusic])
+    }
+
+    @Test func providerOrderRepairsDuplicatesAndMissingPlayers() {
+        let name = "PresenceFMTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set(["spotify", "spotify", "tidal"], forKey: "playbackProviderOrder")
+
+        let preferences = Preferences(defaults: defaults)
+
+        #expect(preferences.playbackProviderOrder == [.spotify, .tidal, .appleMusic, .youtubeMusic])
+    }
+
+    @Test func privateModeIntentActionsPreserveNoStaleExpiration() {
+        let name = "PresenceFMTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.privateUntil = Date(timeIntervalSince1970: 123)
+
+        PrivateModeIntentAction.start.apply(to: preferences)
+        #expect(preferences.privateMode)
+        #expect(preferences.privateUntil == nil)
+
+        PrivateModeIntentAction.end.apply(to: preferences)
+        #expect(!preferences.privateMode)
+        #expect(preferences.privateUntil == nil)
     }
 
     @Test func notificationsAreDeduplicatedAndResettable() async {
@@ -662,6 +691,43 @@ private final class FakeNotificationDelivery: NotificationDelivering {
 
 @Suite("Security")
 struct SecurityTests {
+    @MainActor
+    @Test func verificationReportContainsOperationalCountsWithoutListeningMetadata() async throws {
+        let store = try PersistenceStore(inMemory: true)
+        let model = AppModel(
+            store: store,
+            notifications: NotificationCoordinator(delivery: FakeNotificationDelivery())
+        )
+        let track = TrackMetadata(
+            identity: .init(persistentID: "secret-track-id"),
+            title: "Private Song",
+            artist: "Private Artist",
+            album: "Private Album",
+            duration: 240,
+            source: .appleMusicCatalog,
+            appleMusicURL: nil,
+            artworkReference: nil
+        )
+        store.enqueue(PlaybackSession(
+            id: UUID(),
+            track: track,
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            accumulatedPlayTime: 120,
+            lastPosition: 120,
+            eligibility: .eligible,
+            outcome: .queued
+        ))
+
+        let data = try await model.makeVerificationReport(now: Date(timeIntervalSince1970: 2_000)).encoded()
+        let value = try #require(String(data: data, encoding: .utf8))
+
+        #expect(value.contains("queuedScrobbles"))
+        #expect(value.contains("providerPriority"))
+        #expect(!value.contains("Private Song"))
+        #expect(!value.contains("Private Artist"))
+        #expect(!value.contains("secret-track-id"))
+    }
+
     @Test func credentialsPersistInOwnerOnlyFile() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -799,6 +865,30 @@ struct PersistenceAndQueueTests {
         record.attempts = 4
         record.lastError = "bad session"
         #expect(store.retryScrobble(id: record.id))
+        #expect(record.state == .pending)
+        #expect(record.attempts == 0)
+        #expect(record.lastError == nil)
+    }
+
+    @Test func correctionRequiresValidMetadataAndResetsARejectedScrobble() throws {
+        let store = try PersistenceStore(inMemory: true)
+        store.enqueue(session())
+        let record = try #require(store.context.fetch(FetchDescriptor<ScrobbleRecord>()).first)
+        record.state = .permanentlyFailed
+        record.attempts = 4
+        record.lastError = "Rejected metadata"
+        store.save()
+
+        #expect(!store.correctScrobble(id: record.id, title: " ", artist: "Artist", album: nil))
+        #expect(store.correctScrobble(
+            id: record.id,
+            title: " Corrected Title ",
+            artist: " Corrected Artist ",
+            album: " "
+        ))
+        #expect(record.title == "Corrected Title")
+        #expect(record.artist == "Corrected Artist")
+        #expect(record.album == nil)
         #expect(record.state == .pending)
         #expect(record.attempts == 0)
         #expect(record.lastError == nil)
@@ -960,6 +1050,70 @@ struct ListeningInsightsTests {
 
 @Suite("Playback coordination")
 struct PlaybackCoordinationTests {
+    @Test func playbackProgressAdvancesLocallyClampsAndThrottlesAnnouncements() {
+        let observedAt = Date(timeIntervalSince1970: 10_000)
+        let playing = PlaybackSnapshot(
+            track: nil,
+            state: .playing,
+            position: 42,
+            observedAt: observedAt,
+            confidence: .high
+        )
+        #expect(PlaybackProgressPresentation.position(
+            for: playing,
+            at: observedAt.addingTimeInterval(3),
+            duration: 240
+        ) == 45)
+        #expect(PlaybackProgressPresentation.position(
+            for: playing,
+            at: observedAt.addingTimeInterval(500),
+            duration: 240
+        ) == 240)
+        #expect(
+            PlaybackProgressPresentation.accessibilityValue(position: 31, duration: 240)
+                == PlaybackProgressPresentation.accessibilityValue(position: 44, duration: 240)
+        )
+        #expect(
+            PlaybackProgressPresentation.accessibilityValue(position: 44, duration: 240)
+                != PlaybackProgressPresentation.accessibilityValue(position: 45, duration: 240)
+        )
+    }
+
+    @Test func dashboardMinimumSupportsNarrowResponsiveLayout() {
+        #expect(DashboardLayout.minimumWidth >= 640)
+        #expect(DashboardLayout.minimumHeight >= 520)
+    }
+
+    @Test func providerReorderActionsExposeConcreteAccessibleNames() {
+        #expect(PlaybackProviderID.spotify.moveEarlierAccessibilityLabel == "Move Spotify earlier")
+        #expect(PlaybackProviderID.youtubeMusic.moveLaterAccessibilityLabel == "Move YouTube Music later")
+    }
+
+    @Test func configuredPrioritySelectsThePreferredSimultaneousPlayer() async {
+        let coordinator = PlaybackCoordinator()
+        let now = Date(timeIntervalSince1970: 9_000)
+        let selected = await coordinator.select(
+            [
+                ProviderSnapshot(
+                    provider: .appleMusic,
+                    playback: playback(platform: .appleMusic, state: .playing, at: now),
+                    health: .available,
+                    observedAt: now
+                ),
+                ProviderSnapshot(
+                    provider: .spotify,
+                    playback: playback(platform: .spotify, state: .playing, at: now),
+                    health: .available,
+                    observedAt: now
+                ),
+            ],
+            priority: [.spotify, .appleMusic, .youtubeMusic, .tidal],
+            now: now
+        )
+
+        #expect(selected.track?.platform == .spotify)
+    }
+
     @Test func keepsActivePlayingProviderThenSwitchesDeterministically() async {
         let coordinator = PlaybackCoordinator()
         let now = Date(timeIntervalSince1970: 10_000)

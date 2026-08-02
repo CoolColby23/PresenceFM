@@ -30,6 +30,7 @@ final class AppModel {
     var usingTemporaryStore = false
     var persistenceRecoveryStatus = ""
     var diagnosticCopyStatus = ""
+    var verificationExportStatus = ""
     var onboardingPresented: Bool
     var selectedSection: DashboardSection = .nowPlaying
     var credentialDraft = CredentialDraft()
@@ -57,6 +58,7 @@ final class AppModel {
     @ObservationIgnored private var privacyTask: Task<Void, Never>?
     @ObservationIgnored private var pendingScrobbleSessionIDs: Set<UUID> = []
     @ObservationIgnored private var sectionObserver: NSObjectProtocol?
+    @ObservationIgnored private var privateModeIntentObserver: NSObjectProtocol?
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var started = false
 
@@ -86,6 +88,20 @@ final class AppModel {
             else { return }
             Task { @MainActor in
                 self?.selectedSection = section; NSApp.activate()
+            }
+        }
+        privateModeIntentObserver = NotificationCenter.default.addObserver(
+            forName: .presenceFMPrivateModeIntent,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let rawAction = notification.userInfo?["action"] as? String,
+                  let action = PrivateModeIntentAction(rawValue: rawAction) else { return }
+            Task { @MainActor in
+                switch action {
+                case .start: self?.setPrivate(until: nil)
+                case .end: self?.endPrivateMode()
+                }
             }
         }
         terminationObserver = NotificationCenter.default.addObserver(
@@ -123,6 +139,7 @@ final class AppModel {
         queue.start()
         monitoringTask = Task {
             await monitor.setEnabledProviders(preferences.enabledPlaybackProviders)
+            await monitor.setProviderPriority(preferences.playbackProviderOrder)
             await monitor.setDemoModeEnabled(demoModeEnabled)
             let stream = await monitor.snapshots()
             for await update in stream {
@@ -338,6 +355,10 @@ final class AppModel {
 
     func retryScrobble(id: UUID) { notifications.reset("queue-stuck"); queue.retry(id: id) }
     func removeScrobble(id: UUID) { queue.remove(id: id) }
+    func correctScrobble(id: UUID, title: String, artist: String, album: String?) -> Bool {
+        notifications.reset("queue-stuck")
+        return queue.correct(id: id, title: title, artist: artist, album: album)
+    }
     func clearListeningHistory() { store.clearActivity() }
     func applyHistoryRetention() { store.applyHistoryRetention(days: preferences.historyRetentionDays) }
 
@@ -370,6 +391,14 @@ final class AppModel {
         providerStatuses[provider] = nextStatus
         recordHealth(integrationID(for: provider), nextStatus)
         Task { await monitor.setEnabledProviders(preferences.enabledPlaybackProviders) }
+    }
+
+    func movePlaybackProvider(_ provider: PlaybackProviderID, by offset: Int) {
+        guard let source = preferences.playbackProviderOrder.firstIndex(of: provider) else { return }
+        let destination = source + offset
+        guard preferences.playbackProviderOrder.indices.contains(destination) else { return }
+        preferences.playbackProviderOrder.swapAt(source, destination)
+        Task { await monitor.setProviderPriority(preferences.playbackProviderOrder) }
     }
 
     func setDemoModeEnabled(_ enabled: Bool) {
@@ -417,6 +446,81 @@ final class AppModel {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(report, forType: .string)
         diagnosticCopyStatus = "Copied a privacy-redacted report. Review it before sharing."
+    }
+
+    func copyVerificationReport() {
+        Task {
+            do {
+                let report = try await makeVerificationReport()
+                guard let value = String(data: try report.encoded(), encoding: .utf8) else {
+                    throw CocoaError(.fileWriteInapplicableStringEncoding)
+                }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(value, forType: .string)
+                verificationExportStatus = "Copied a metadata-free verification snapshot."
+            } catch {
+                verificationExportStatus = Redactor.redact(error.localizedDescription)
+            }
+        }
+    }
+
+    func saveVerificationReport() {
+        Task {
+            do {
+                let data = try await makeVerificationReport().encoded()
+                let panel = NSSavePanel()
+                panel.nameFieldStringValue = "PresenceFM-Verification-\(ReleaseConfiguration.version).json"
+                panel.canCreateDirectories = true
+                guard panel.runModal() == .OK, let url = panel.url else { return }
+                try data.write(to: url, options: .atomic)
+                verificationExportStatus = "Saved a metadata-free verification snapshot."
+            } catch {
+                verificationExportStatus = Redactor.redact(error.localizedDescription)
+            }
+        }
+    }
+
+    func makeVerificationReport(now: Date = .now) async throws -> VerificationReport {
+        let pending = QueueState.pending.rawValue
+        let retrying = QueueState.retrying.rawValue
+        let permanentlyFailed = QueueState.permanentlyFailed.rawValue
+        let queued = try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>(
+            predicate: #Predicate { $0.stateRaw == pending || $0.stateRaw == retrying }
+        ))
+        let failed = try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>(
+            predicate: #Predicate { $0.stateRaw == permanentlyFailed }
+        ))
+        let cache = await artwork.cacheMetrics
+        let statuses = Dictionary(uniqueKeysWithValues: integrationHealth.map {
+            ($0.integration.displayName, $0.summary)
+        })
+        return VerificationReport(
+            generatedAt: now,
+            appVersion: ReleaseConfiguration.version,
+            appBuild: ReleaseConfiguration.build,
+            macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            architecture: VerificationReport.currentArchitecture,
+            demoMode: demoModeEnabled,
+            privateMode: isPrivate,
+            enabledProviders: preferences.enabledPlaybackProviders.map(\.displayName).sorted(),
+            providerPriority: preferences.playbackProviderOrder.map(\.displayName),
+            serviceStatus: statuses,
+            polling: .init(
+                latestMilliseconds: Int((playbackPollMetrics.totalDuration * 1_000).rounded()),
+                providerMilliseconds: Dictionary(uniqueKeysWithValues: playbackPollMetrics.providerDurations.map {
+                    ($0.key.displayName, Int(($0.value * 1_000).rounded()))
+                })
+            ),
+            localData: .init(
+                activityRecords: try store.context.fetchCount(FetchDescriptor<ActivityRecord>()),
+                queuedScrobbles: queued,
+                failedScrobbles: failed,
+                diagnosticRecords: try store.context.fetchCount(FetchDescriptor<DiagnosticRecord>()),
+                healthEvents: try store.context.fetchCount(FetchDescriptor<IntegrationHealthEvent>()),
+                artworkMemoryEntries: cache.memoryEntries,
+                artworkDiskEntries: cache.diskEntries
+            )
+        )
     }
 
     func restoreLatestDatabaseBackup() {
@@ -689,6 +793,13 @@ final class Preferences {
     var enabledPlaybackProviders: Set<PlaybackProviderID> {
         didSet { defaults.set(enabledPlaybackProviders.map(\.rawValue).sorted(), forKey: "enabledPlaybackProviders") }
     }
+    var playbackProviderOrder: [PlaybackProviderID] {
+        didSet {
+            let normalized = PlaybackProviderID.normalizedOrder(playbackProviderOrder)
+            if playbackProviderOrder != normalized { playbackProviderOrder = normalized; return }
+            defaults.set(playbackProviderOrder.map(\.rawValue), forKey: "playbackProviderOrder")
+        }
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -726,6 +837,9 @@ final class Preferences {
         } else {
             enabledPlaybackProviders = Set(PlaybackProviderID.allCases)
         }
+        playbackProviderOrder = PlaybackProviderID.normalizedOrder(
+            defaults.stringArray(forKey: "playbackProviderOrder")?.compactMap(PlaybackProviderID.init(rawValue:)) ?? []
+        )
     }
 }
 

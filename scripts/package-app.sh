@@ -25,6 +25,7 @@ RESOURCE_BUNDLE="$BIN_DIR/PresenceFM_PresenceFM.bundle"
   exit 1
 }
 cp -R "$RESOURCE_BUNDLE" "$CONTENTS/Resources/PresenceFM_PresenceFM.bundle"
+"$ROOT/scripts/generate-app-intents-metadata.sh" "$CONTENTS/Resources"
 
 plutil -create xml1 "$CONTENTS/Info.plist"
 plutil -insert CFBundleName -string PresenceFM "$CONTENTS/Info.plist"

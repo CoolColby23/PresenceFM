@@ -78,6 +78,15 @@ actor ArtworkService {
 
     var memoryEntryCount: Int { memory.count }
 
+    var cacheMetrics: ArtworkCacheMetrics {
+        let diskEntries = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: .skipsHiddenFiles
+        ).count) ?? 0
+        return ArtworkCacheMetrics(memoryEntries: memory.count, diskEntries: diskEntries)
+    }
+
     /// Finds a public Apple-hosted cover URL suitable for Discord's external asset field.
     /// Local artwork bytes never leave the Mac.
     func publicArtworkURL(for track: TrackMetadata) async -> URL? {

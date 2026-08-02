@@ -296,6 +296,32 @@ final class PersistenceStore {
         save()
     }
 
+    @discardableResult
+    func correctScrobble(
+        id: UUID,
+        title: String,
+        artist: String,
+        album: String?,
+        now: Date = .now
+    ) -> Bool {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty, !cleanArtist.isEmpty else { return false }
+        let descriptor = FetchDescriptor<ScrobbleRecord>(predicate: #Predicate { $0.id == id })
+        guard let record = try? context.fetch(descriptor).first,
+              record.state == .permanentlyFailed else { return false }
+        record.title = cleanTitle
+        record.artist = cleanArtist
+        let cleanAlbum = album?.trimmingCharacters(in: .whitespacesAndNewlines)
+        record.album = cleanAlbum?.isEmpty == false ? cleanAlbum : nil
+        record.state = .pending
+        record.attempts = 0
+        record.nextAttemptAt = now
+        record.lastError = nil
+        save()
+        return true
+    }
+
     func log(_ category: String, _ message: String) {
         context.insert(DiagnosticRecord(category: category, message: Redactor.redact(message)))
         trim(DiagnosticRecord.self, limit: IntegrationPolicy.diagnosticRecordLimit, oldestFirst: [SortDescriptor(\.timestamp)])

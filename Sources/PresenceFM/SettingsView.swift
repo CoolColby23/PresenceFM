@@ -236,22 +236,31 @@ private struct PlaybackProviderSettingsSection: View {
 
     var body: some View {
         Section("Music Players") {
-            Toggle("Apple Music", isOn: providerBinding(.appleMusic))
-            Toggle("Spotify", isOn: providerBinding(.spotify))
-            Toggle("TIDAL — best effort through macOS Now Playing", isOn: providerBinding(.tidal))
-            HStack {
-                Toggle("YouTube Music", isOn: providerBinding(.youtubeMusic))
-                Spacer()
-                if preferences.enabledPlaybackProviders.contains(.youtubeMusic) {
-                    Button(model.ytmDesktopStatus == .connected ? "Disconnect" : "Connect YTMDesktop") {
-                        Task {
-                            if model.ytmDesktopStatus == .connected { await model.disconnectYTMDesktop() } else { await model.connectYTMDesktop() }
+            ForEach(Array(preferences.playbackProviderOrder.enumerated()), id: \.element) { index, provider in
+                PlaybackProviderRow(
+                    provider: provider,
+                    isEnabled: providerBinding(provider),
+                    canMoveUp: index > 0,
+                    canMoveDown: index < preferences.playbackProviderOrder.count - 1,
+                    moveUp: { model.movePlaybackProvider(provider, by: -1) },
+                    moveDown: { model.movePlaybackProvider(provider, by: 1) }
+                )
+            }
+            if preferences.enabledPlaybackProviders.contains(.youtubeMusic) {
+                Button(model.ytmDesktopStatus == .connected ? "Disconnect YTMDesktop" : "Connect YTMDesktop") {
+                    Task {
+                        if model.ytmDesktopStatus == .connected {
+                            await model.disconnectYTMDesktop()
+                        } else {
+                            await model.connectYTMDesktop()
                         }
                     }
                 }
             }
-            Text("In YTMDesktop 2, enable Companion Server and companion authorization before connecting. PresenceFM only reads local playback state.")
-                .font(.caption).foregroundStyle(.secondary)
+            Text(
+                "PresenceFM keeps an actively playing provider selected. When multiple players start together, the order above wins. TIDAL is best effort through macOS Now Playing; YTMDesktop requires its Companion Server."
+            )
+            .font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -260,6 +269,34 @@ private struct PlaybackProviderSettingsSection: View {
             get: { preferences.enabledPlaybackProviders.contains(provider) },
             set: { model.setPlaybackProvider(provider, enabled: $0) }
         )
+    }
+}
+
+private struct PlaybackProviderRow: View {
+    let provider: PlaybackProviderID
+    @Binding var isEnabled: Bool
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let moveUp: () -> Void
+    let moveDown: () -> Void
+
+    var body: some View {
+        HStack {
+            Toggle(provider.displayName, isOn: $isEnabled)
+            Spacer()
+            Button(action: moveUp) { Image(systemName: "chevron.up") }
+                .labelStyle(.iconOnly)
+                .disabled(!canMoveUp)
+                .accessibilityLabel(provider.moveEarlierAccessibilityLabel)
+                .accessibilityIdentifier("players.\(provider.rawValue).move-up")
+            Button(action: moveDown) { Image(systemName: "chevron.down") }
+                .labelStyle(.iconOnly)
+                .disabled(!canMoveDown)
+                .accessibilityLabel(provider.moveLaterAccessibilityLabel)
+                .accessibilityIdentifier("players.\(provider.rawValue).move-down")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("players.\(provider.rawValue)")
     }
 }
 

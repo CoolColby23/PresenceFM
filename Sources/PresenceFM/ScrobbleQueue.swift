@@ -43,6 +43,17 @@ final class ScrobbleQueue {
 
     func retry(id: UUID) { if store.retryScrobble(id: id, now: clock.now) { Task { await process() } } }
     func remove(id: UUID) { store.removeScrobble(id: id) }
+    func correct(id: UUID, title: String, artist: String, album: String?) -> Bool {
+        guard store.correctScrobble(
+            id: id,
+            title: title,
+            artist: artist,
+            album: album,
+            now: clock.now
+        ) else { return false }
+        Task { await process() }
+        return true
+    }
 
     func process() async {
         // enqueue(), the periodic worker, startup recovery, and manual retries can all

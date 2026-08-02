@@ -23,6 +23,7 @@ actor PlaybackMonitor: PlaybackProviding {
     private var continuation: AsyncStream<PlaybackMonitorUpdate>.Continuation?
     private var monitoringTask: Task<Void, Never>?
     private var enabledProviders = Set(PlaybackProviderID.allCases)
+    private var providerPriority = PlaybackProviderID.allCases
     private var demoStartedAt: Date?
     private var latestHealth = Dictionary(
         uniqueKeysWithValues: PlaybackProviderID.allCases.map { ($0, ProviderHealth.inactive) }
@@ -60,6 +61,10 @@ actor PlaybackMonitor: PlaybackProviding {
     func setEnabledProviders(_ providers: Set<PlaybackProviderID>) {
         enabledProviders = providers
         for id in PlaybackProviderID.allCases where !providers.contains(id) { latestHealth[id] = .disabled }
+    }
+
+    func setProviderPriority(_ priority: [PlaybackProviderID]) {
+        providerPriority = PlaybackProviderID.normalizedOrder(priority)
     }
 
     func setDemoModeEnabled(_ enabled: Bool) {
@@ -101,29 +106,17 @@ actor PlaybackMonitor: PlaybackProviding {
         os_signpost(.begin, log: performanceLog, name: "Playback poll", signpostID: signpostID)
         var snapshots: [ProviderSnapshot] = []
         var durations: [PlaybackProviderID: TimeInterval] = [:]
-        for id in [PlaybackProviderID.appleMusic, .spotify] where enabledProviders.contains(id) {
+        for id in providerPriority where enabledProviders.contains(id) {
             if let provider = providers[id] {
                 let measured = await measuredSnapshot(provider)
                 snapshots.append(measured.snapshot); durations[id] = measured.duration
             }
-        }
-        let preliminary = await coordinator.select(snapshots, now: clock.now)
-        if preliminary.state == .playing && !refreshesAllHealth {
-            return finishUpdate(preliminary, startedAt: pollStartedAt, durations: durations, signpostID: signpostID)
-        }
-        if enabledProviders.contains(.youtubeMusic), let provider = providers[.youtubeMusic] {
-            let measured = await measuredSnapshot(provider)
-            snapshots.append(measured.snapshot); durations[.youtubeMusic] = measured.duration
-            let withYouTube = await coordinator.select(snapshots, now: clock.now)
-            if withYouTube.state == .playing && !refreshesAllHealth {
-                return finishUpdate(withYouTube, startedAt: pollStartedAt, durations: durations, signpostID: signpostID)
+            let selected = await coordinator.select(snapshots, priority: providerPriority, now: clock.now)
+            if selected.state == .playing && !refreshesAllHealth {
+                return finishUpdate(selected, startedAt: pollStartedAt, durations: durations, signpostID: signpostID)
             }
         }
-        if enabledProviders.contains(.tidal), let provider = providers[.tidal] {
-            let measured = await measuredSnapshot(provider)
-            snapshots.append(measured.snapshot); durations[.tidal] = measured.duration
-        }
-        let playback = await coordinator.select(snapshots, now: clock.now)
+        let playback = await coordinator.select(snapshots, priority: providerPriority, now: clock.now)
         if refreshesAllHealth { lastFullHealthRefresh = clock.now }
         return finishUpdate(playback, startedAt: pollStartedAt, durations: durations, signpostID: signpostID)
     }

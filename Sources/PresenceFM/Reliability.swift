@@ -64,6 +64,9 @@ enum PlaybackProviderID: String, Codable, CaseIterable, Sendable, Identifiable {
         case .tidal: "TIDAL"
         }
     }
+
+    var moveEarlierAccessibilityLabel: String { "Move \(displayName) earlier" }
+    var moveLaterAccessibilityLabel: String { "Move \(displayName) later" }
 }
 
 enum ProviderHealth: Sendable, Equatable {
@@ -100,9 +103,13 @@ protocol PlaybackProvider: Sendable {
 actor PlaybackCoordinator {
     private var activeProvider: PlaybackProviderID?
 
-    func select(_ snapshots: [ProviderSnapshot], now: Date = .now) -> PlaybackSnapshot {
+    func select(
+        _ snapshots: [ProviderSnapshot],
+        priority: [PlaybackProviderID] = PlaybackProviderID.allCases,
+        now: Date = .now
+    ) -> PlaybackSnapshot {
         let byProvider = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.provider, $0) })
-        let ordered = PlaybackProviderID.allCases.compactMap { byProvider[$0] }
+        let ordered = PlaybackProviderID.normalizedOrder(priority).compactMap { byProvider[$0] }
 
         if let activeProvider,
             let active = byProvider[activeProvider]?.playback,
@@ -141,6 +148,13 @@ actor PlaybackCoordinator {
         case .youtubeMusic: return .youtubeMusic
         case .tidal: return .tidal
         }
+    }
+}
+
+extension PlaybackProviderID {
+    static func normalizedOrder(_ values: [PlaybackProviderID]) -> [PlaybackProviderID] {
+        var seen: Set<PlaybackProviderID> = []
+        return (values + allCases).filter { seen.insert($0).inserted }
     }
 }
 
