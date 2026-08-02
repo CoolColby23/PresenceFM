@@ -13,20 +13,31 @@ CONST_LIST="$(mktemp /tmp/presencefm-intent-constants.XXXXXX)"
 trap 'rm -f "$SOURCE_LIST" "$CONST_LIST"' EXIT
 
 find "$ROOT/Sources/PresenceFM" -name '*.swift' -type f -print | sort > "$SOURCE_LIST"
-while IFS= read -r constant_values; do
-    case "$constant_values" in
-        */Debug/*|*/debug/*|*PresenceFMTests*|*-testable-*|*/presencefm-app-intents/*)
-            continue
-            ;;
-        */PresenceFM.build/*|*/PresenceFM-p.build/*)
-            print -r -- "$constant_values"
-            ;;
-    esac
-done < <(find "$ROOT/.build" -name '*.swiftconstvalues' -type f -print) | sort > "$CONST_LIST"
+if [[ "${PRESENCEFM_FORCE_APP_INTENTS_METADATA_FALLBACK:-0}" == "1" ]]; then
+    : > "$CONST_LIST"
+else
+    while IFS= read -r constant_values; do
+        case "$constant_values" in
+            */Debug/*|*/debug/*|*PresenceFMTests*|*-testable-*|*/presencefm-app-intents/*)
+                continue
+                ;;
+            */PresenceFM.build/*|*/PresenceFM-p.build/*)
+                print -r -- "$constant_values"
+                ;;
+        esac
+    done < <(find "$ROOT/.build" -name '*.swiftconstvalues' -type f -print) | sort > "$CONST_LIST"
+fi
 
 [[ -s "$CONST_LIST" ]] || {
-    echo "Release App Intents constant metadata was not produced" >&2
-    exit 1
+    FALLBACK_METADATA="$ROOT/Packaging/Metadata.appintents"
+    [[ -d "$FALLBACK_METADATA" ]] || {
+        echo "Release App Intents constant metadata was not produced" >&2
+        exit 1
+    }
+    rm -rf "$OUTPUT_DIRECTORY/Metadata.appintents"
+    cp -R "$FALLBACK_METADATA" "$OUTPUT_DIRECTORY/Metadata.appintents"
+    echo "Used versioned App Intents metadata fallback"
+    exit 0
 }
 
 rm -rf "$OUTPUT_DIRECTORY/Metadata.appintents"

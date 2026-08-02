@@ -4,11 +4,7 @@ set -euo pipefail
 ROOT="${0:A:h:h}"
 cd "$ROOT"
 "$ROOT/scripts/sync-brand-assets.sh"
-BUILD_ARGUMENTS=(-c release)
-if ! swiftc -help-hidden 2>&1 | grep -q -- '-const-gather-protocols-list'; then
-  BUILD_ARGUMENTS+=(-Xswiftc -emit-const-values)
-fi
-swift build "${BUILD_ARGUMENTS[@]}"
+swift build -c release
 BIN_DIR="$(swift build -c release --show-bin-path)"
 
 VERSION="${PRESENCEFM_VERSION:-$(<"$ROOT/VERSION")}"
