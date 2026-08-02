@@ -71,6 +71,12 @@ struct PreferenceBackup: Codable, Equatable {
     let discordPausedText: String?
     let launchAtLogin: Bool
     let historyRetentionDays: Int
+    let discordPresenceProfiles: [DiscordPresenceProfile]?
+    let selectedDiscordProfileID: UUID?
+    let excludedScrobbleArtists: String?
+    let excludedScrobbleAlbums: String?
+    let excludedScrobbleTitleTerms: String?
+    let excludedScrobblePlatforms: [String]?
 }
 
 struct PresenceFMBackupDocument: FileDocument {
@@ -272,7 +278,13 @@ enum BackupService {
             discordSharePaused: preferences.discordSharePaused,
             discordPausedText: preferences.discordPausedText,
             launchAtLogin: preferences.launchAtLogin,
-            historyRetentionDays: preferences.historyRetentionDays
+            historyRetentionDays: preferences.historyRetentionDays,
+            discordPresenceProfiles: preferences.discordPresenceProfiles,
+            selectedDiscordProfileID: preferences.selectedDiscordProfileID,
+            excludedScrobbleArtists: preferences.excludedScrobbleArtists,
+            excludedScrobbleAlbums: preferences.excludedScrobbleAlbums,
+            excludedScrobbleTitleTerms: preferences.excludedScrobbleTitleTerms,
+            excludedScrobblePlatforms: preferences.excludedScrobblePlatforms.map(\.rawValue).sorted()
         )
     }
 
@@ -303,5 +315,13 @@ enum BackupService {
         preferences.discordPausedText = value.discordPausedText ?? "Paused • {artist}"
         preferences.launchAtLogin = value.launchAtLogin
         preferences.historyRetentionDays = value.historyRetentionDays
+        preferences.discordPresenceProfiles = value.discordPresenceProfiles ?? []
+        preferences.selectedDiscordProfileID = value.selectedDiscordProfileID
+        preferences.excludedScrobbleArtists = value.excludedScrobbleArtists ?? ""
+        preferences.excludedScrobbleAlbums = value.excludedScrobbleAlbums ?? ""
+        preferences.excludedScrobbleTitleTerms = value.excludedScrobbleTitleTerms ?? ""
+        preferences.excludedScrobblePlatforms = Set(
+            value.excludedScrobblePlatforms?.compactMap(PlaybackPlatform.init(rawValue:)) ?? []
+        )
     }
 }

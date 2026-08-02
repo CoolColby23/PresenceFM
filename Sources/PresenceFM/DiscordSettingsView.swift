@@ -3,6 +3,7 @@ import SwiftUI
 struct DiscordSettingsSection: View {
     let model: AppModel
     let preferences: Preferences
+    @State private var profileName = ""
 
     var body: some View {
         @Bindable var preferences = preferences
@@ -10,6 +11,7 @@ struct DiscordSettingsSection: View {
             Toggle("Enable Discord Rich Presence", isOn: $preferences.discordEnabled)
                 .accessibilityIdentifier("discord.enabled")
                 .onChange(of: preferences.discordEnabled) { _, value in model.setDiscordEnabled(value) }
+            profileControls
             Picker("Activity style", selection: $preferences.discordActivityType) {
                 ForEach(DiscordActivityType.allCases) { Text($0.rawValue).tag($0) }
             }
@@ -83,14 +85,54 @@ struct DiscordSettingsSection: View {
             Text("Templates support {title}, {artist}, {album}, {platform}, {state}, {position}, and {duration}.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
-                Menu("Apply Preset") {
-                    Button("Balanced") { applyPreset(.balanced) }
-                    Button("Minimal") { applyPreset(.minimal) }
-                    Button("Detailed") { applyPreset(.detailed) }
-                }
                 if preferences.discordEnabled { Button("Reconnect to Discord") { model.refreshDiscord() } }
             }
         }
+    }
+
+    private var profileControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Menu(selectedProfileName) {
+                    ForEach(preferences.availableDiscordProfiles) { profile in
+                        Button {
+                            model.applyDiscordProfile(id: profile.id)
+                        } label: {
+                            if preferences.selectedDiscordProfileID == profile.id {
+                                Label(profile.name, systemImage: "checkmark")
+                            } else {
+                                Text(profile.name)
+                            }
+                        }
+                    }
+                }
+                .accessibilityLabel("Discord presence profile")
+                TextField("New profile name", text: $profileName)
+                    .accessibilityIdentifier("discord.profile-name")
+                Button("Save Current") {
+                    if model.saveDiscordProfile(named: profileName) != nil { profileName = "" }
+                }
+                .disabled(profileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            if !preferences.discordPresenceProfiles.isEmpty {
+                Menu("Delete Custom Profile") {
+                    ForEach(preferences.discordPresenceProfiles) { profile in
+                        Button(profile.name, role: .destructive) { model.deleteDiscordProfile(id: profile.id) }
+                    }
+                }
+            }
+            Text("Profiles save the current Discord layout and sharing options. Built-in profiles are always available.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var selectedProfileName: String {
+        guard let id = preferences.selectedDiscordProfileID,
+            let profile = preferences.availableDiscordProfiles.first(where: { $0.id == id })
+        else {
+            return "Choose Profile"
+        }
+        return profile.name
     }
 
     private var previewActivityName: String {
@@ -125,42 +167,7 @@ struct DiscordSettingsSection: View {
 
     private func refresh() { model.refreshPresenceOptions() }
 
-    private func applyPreset(_ preset: DiscordPreset) {
-        switch preset {
-        case .balanced:
-            preferences.discordActivityType = .listening
-            preferences.discordLineOne = .title
-            preferences.discordLineTwo = .artistAndAlbum
-            preferences.discordTimerStyle = .remaining
-            preferences.discordLargeImage = .artwork
-            preferences.discordSmallImage = .playbackPlatform
-            preferences.showLink = true
-        case .minimal:
-            preferences.discordActivityType = .listening
-            preferences.discordLineOne = .title
-            preferences.discordLineTwo = .artist
-            preferences.discordTimerStyle = .hidden
-            preferences.discordLargeImage = .artwork
-            preferences.discordSmallImage = .none
-            preferences.showLink = false
-        case .detailed:
-            preferences.discordActivityType = .listening
-            preferences.discordLineOne = .custom
-            preferences.discordCustomLineOne = "{title} • {position}/{duration}"
-            preferences.discordLineTwo = .custom
-            preferences.discordCustomLineTwo = "{artist} — {album}"
-            preferences.discordTimerStyle = .remaining
-            preferences.discordLargeImage = .artwork
-            preferences.discordLargeImageText = "{album}"
-            preferences.discordSmallImage = .playbackPlatform
-            preferences.discordSmallImageText = "Playing on {platform}"
-            preferences.showLink = true
-        }
-        refresh()
-    }
 }
-
-private enum DiscordPreset { case balanced, minimal, detailed }
 
 private struct DiscordStatusPreview: View {
     let firstLine: String

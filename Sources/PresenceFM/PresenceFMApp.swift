@@ -38,7 +38,9 @@ struct PresenceFMApp: App {
             .modelContainer(model.store.container)
 
         MenuBarExtra {
-            MenuBarView().environment(model)
+            MenuBarControlCenterView()
+                .environment(model)
+                .modelContainer(model.store.container)
         } label: {
             MenuBarBrandMark()
                 .frame(width: 18, height: 18)

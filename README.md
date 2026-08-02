@@ -45,8 +45,12 @@ recorded, GitHub's latest published release remains the stable download.
 - Keyboard shortcuts for every dashboard destination, clearer VoiceOver onboarding progress, and confirmations for destructive queue and account actions.
 - Configurable provider priority, correction-before-retry for rejected scrobbles, and metadata-free release-verification snapshots.
 - Shortcuts actions for Private Mode, privacy status, and opening the dashboard.
+- A menu-bar control center, reusable Discord profiles, Last.fm exclusion rules, and a shareable weekly recap.
+- Authenticated encrypted iCloud backups in builds signed with the PresenceFM iCloud container entitlement.
 
 Listening insights are calculated entirely on this Mac from PresenceFM's local activity records. They are never uploaded by PresenceFM.
+
+The desktop WidgetKit source is ready, but widget distribution and shared live data require an Apple-signed app-group entitlement. See [Documentation/WIDGET.md](Documentation/WIDGET.md); PresenceFM does not represent that capability as shipped in ad-hoc builds.
 
 ## Rich Now Playing
 

@@ -46,7 +46,11 @@ struct SettingsView: View {
                         preferences: preferences,
                         dataStatus: dataStatus,
                         prepareBackup: prepareBackup,
-                        restoreBackup: { showingBackupImporter = true }
+                        restoreBackup: { showingBackupImporter = true },
+                        confirmCloudRestore: {
+                            pendingRestore = $0
+                            showingRestoreConfirmation = true
+                        }
                     )
                 case .advanced:
                     AdvancedSettingsSection(model: model)
@@ -226,7 +230,46 @@ private struct LastFMSettingsSection: View {
                 .presenceButton(prominent: true)
             Text("Blank credential fields keep the saved value. PresenceFM never displays your stored shared secret.")
                 .font(.caption).foregroundStyle(.secondary)
+            DisclosureGroup("Scrobble Exclusions") {
+                TextField(
+                    "Artists (one per line or comma-separated)",
+                    text: $preferences.excludedScrobbleArtists,
+                    axis: .vertical
+                )
+                TextField(
+                    "Albums (one per line or comma-separated)",
+                    text: $preferences.excludedScrobbleAlbums,
+                    axis: .vertical
+                )
+                TextField(
+                    "Title contains (one term per line or comma-separated)",
+                    text: $preferences.excludedScrobbleTitleTerms,
+                    axis: .vertical
+                )
+                ForEach(PlaybackPlatform.allCases) { platform in
+                    Toggle("Exclude \(platform.rawValue)", isOn: exclusionBinding(for: platform))
+                }
+                Text("Exclusions affect Last.fm only. Listening History and Discord remain unchanged.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .onChange(of: preferences.excludedScrobbleArtists) { _, _ in model.refreshScrobbleRules() }
+            .onChange(of: preferences.excludedScrobbleAlbums) { _, _ in model.refreshScrobbleRules() }
+            .onChange(of: preferences.excludedScrobbleTitleTerms) { _, _ in model.refreshScrobbleRules() }
+            .onChange(of: preferences.excludedScrobblePlatforms) { _, _ in model.refreshScrobbleRules() }
         }
+    }
+
+    private func exclusionBinding(for platform: PlaybackPlatform) -> Binding<Bool> {
+        Binding(
+            get: { preferences.excludedScrobblePlatforms.contains(platform) },
+            set: { excluded in
+                if excluded {
+                    preferences.excludedScrobblePlatforms.insert(platform)
+                } else {
+                    preferences.excludedScrobblePlatforms.remove(platform)
+                }
+            }
+        )
     }
 }
 
@@ -306,6 +349,10 @@ private struct DataSettingsSections: View {
     let dataStatus: String
     let prepareBackup: () -> Void
     let restoreBackup: () -> Void
+    let confirmCloudRestore: (PresenceFMBackup) -> Void
+    @State private var cloudPassphrase = ""
+    @State private var cloudStatus = ""
+    @State private var cloudOperationInProgress = false
 
     var body: some View {
         @Bindable var preferences = preferences
@@ -333,6 +380,64 @@ private struct DataSettingsSections: View {
                 "Backups contain listening history, the scrobble queue, and non-secret settings. Credentials, authorization tokens, diagnostics, artwork, and machine-specific paths are excluded. Restore replaces current local data and disconnects Last.fm."
             )
             .font(.caption).foregroundStyle(.secondary)
+        }
+        Section("Encrypted iCloud Backup") {
+            SecureField("Backup passphrase", text: $cloudPassphrase)
+                .textContentType(.newPassword)
+            HStack {
+                Button("Back Up to iCloud", systemImage: "icloud.and.arrow.up") { createCloudBackup() }
+                Button("Restore from iCloud", systemImage: "icloud.and.arrow.down") { restoreCloudBackup() }
+            }
+            .disabled(cloudOperationInProgress || cloudPassphrase.count < 12)
+            if cloudOperationInProgress { ProgressView().controlSize(.small) }
+            if !cloudStatus.isEmpty { Text(cloudStatus).foregroundStyle(.secondary) }
+            Text(
+                "Backups use authenticated AES-256-GCM encryption. Your passphrase is never stored and cannot be recovered. iCloud Drive requires an entitled PresenceFM build."
+            )
+            .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func createCloudBackup() {
+        do {
+            let data = try BackupService.encode(
+                BackupService.make(store: model.store, preferences: preferences)
+            )
+            let passphrase = cloudPassphrase
+            cloudOperationInProgress = true
+            cloudStatus = "Encrypting backup…"
+            Task {
+                do {
+                    let url = try await Task.detached {
+                        try ICloudBackupStore.save(
+                            SecureBackupService.encrypt(data, passphrase: passphrase)
+                        )
+                    }.value
+                    preferences.lastBackupAt = .now
+                    cloudStatus = "Encrypted backup saved to iCloud Drive as \(url.lastPathComponent)."
+                } catch { cloudStatus = error.localizedDescription }
+                cloudOperationInProgress = false
+            }
+        } catch { cloudStatus = error.localizedDescription }
+    }
+
+    private func restoreCloudBackup() {
+        let passphrase = cloudPassphrase
+        cloudOperationInProgress = true
+        cloudStatus = "Downloading and decrypting backup…"
+        Task {
+            do {
+                let backup = try await Task.detached {
+                    let encrypted = try ICloudBackupStore.loadLatest()
+                    let data = try SecureBackupService.decrypt(encrypted, passphrase: passphrase)
+                    let backup = try BackupService.decode(data)
+                    try BackupService.validate(backup)
+                    return backup
+                }.value
+                cloudStatus = "Backup decrypted. Confirm restore to continue."
+                confirmCloudRestore(backup)
+            } catch { cloudStatus = error.localizedDescription }
+            cloudOperationInProgress = false
         }
     }
 }

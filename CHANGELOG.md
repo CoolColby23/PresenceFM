@@ -28,6 +28,12 @@
 - Preserve the outgoing track's cover artwork when a track change finalizes its listening-history record, and safely backfill matching older blank rows when that track is played again.
 - Add website integrity checks, GitHub Pages deployment, release-candidate messaging, durable documentation links, social metadata, sitemap, and visible keyboard focus.
 - Record the remaining manual compatibility, provider, accessibility, privacy, and soak-test gates without presenting them as completed.
+- Expand the menu-bar window into a control center with sharing toggles, independent recovery actions, Discord profile switching, Private Mode, and a weekly listening snapshot.
+- Add durable built-in and custom Discord presence profiles without changing the external Discord protocol.
+- Add a copyable seven-day listening recap with listens, minutes, artists, favorites, platform, and busiest-day highlights.
+- Add Last.fm exclusion rules for artists, albums, title terms, and playback platforms while preserving local history and Discord sharing.
+- Add passphrase-protected AES-256-GCM backups for entitled iCloud Drive builds, with authenticated restore and clear capability errors.
+- Prepare a privacy-aware macOS WidgetKit extension and shared snapshot timeline; distribution remains gated on the PresenceFM app-group entitlement.
 
 ## 0.4.0 - 2026-07-12
 

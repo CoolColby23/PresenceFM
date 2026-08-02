@@ -621,6 +621,45 @@ struct PreferencesAndNotificationTests {
         #expect(reloaded.playbackProviderOrder == [.spotify, .appleMusic, .tidal, .youtubeMusic])
     }
 
+    @Test func discordProfilesCaptureApplyAndPersist() throws {
+        let name = "PresenceFMTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.discordActivityName = "My {artist} profile"
+        preferences.discordTimerStyle = .hidden
+        let profile = DiscordPresenceProfile.capture(name: "Focus", preferences: preferences)
+        preferences.discordPresenceProfiles = [profile]
+        preferences.discordActivityName = "Changed"
+        preferences.discordTimerStyle = .remaining
+
+        profile.apply(to: preferences)
+        #expect(preferences.discordActivityName == "My {artist} profile")
+        #expect(preferences.discordTimerStyle == .hidden)
+        #expect(Preferences(defaults: defaults).discordPresenceProfiles == [profile])
+    }
+
+    @Test func scrobbleExclusionsMatchNormalizedMetadataAndPlatform() {
+        let rules = ScrobbleExclusionRules(
+            artistsText: "Beyoncé\nAnother Artist",
+            albumsText: "Private Album",
+            titleTermsText: "demo, voice memo",
+            platforms: [.youtubeMusic]
+        )
+        let track = TrackMetadata(
+            identity: .init(persistentID: "excluded"), title: "Late Night Demo", artist: "Different Artist",
+            album: "Public Album", duration: 180, source: .appleMusicCatalog,
+            appleMusicURL: nil, artworkReference: nil, platform: .spotify
+        )
+        #expect(rules.reason(for: track) == "This track matches an excluded title term.")
+        let platformTrack = TrackMetadata(
+            identity: .init(persistentID: "platform"), title: "Song", artist: "Artist",
+            album: nil, duration: 180, source: .appleMusicCatalog,
+            appleMusicURL: nil, artworkReference: nil, platform: .youtubeMusic
+        )
+        #expect(rules.reason(for: platformTrack) == "Scrobbling is disabled for YouTube Music.")
+    }
+
     @Test func providerOrderRepairsDuplicatesAndMissingPlayers() {
         let name = "PresenceFMTests.\(UUID())"
         let defaults = UserDefaults(suiteName: name)!
@@ -691,6 +730,22 @@ private final class FakeNotificationDelivery: NotificationDelivering {
 
 @Suite("Security")
 struct SecurityTests {
+    @Test func encryptedBackupRoundTripsAndRejectsWrongPassphrase() throws {
+        let original = Data("private backup contents".utf8)
+        let encrypted = try SecureBackupService.encrypt(
+            original,
+            passphrase: "correct horse battery staple"
+        )
+        #expect(encrypted != original)
+        #expect(try SecureBackupService.decrypt(
+            encrypted,
+            passphrase: "correct horse battery staple"
+        ) == original)
+        #expect(throws: SecureBackupError.self) {
+            try SecureBackupService.decrypt(encrypted, passphrase: "incorrect passphrase")
+        }
+    }
+
     @MainActor
     @Test func verificationReportContainsOperationalCountsWithoutListeningMetadata() async throws {
         let store = try PersistenceStore(inMemory: true)
@@ -1034,6 +1089,23 @@ struct ListeningInsightsTests {
         #expect(summary.dailyCounts.reduce(0) { $0 + $1.plays } == 3)
     }
 
+    @Test func weeklyRecapSummarizesOnlyTheRecentSevenDays() throws {
+        let store = try PersistenceStore(inMemory: true)
+        let now = Date.now
+        store.record(session(title: "Current", artist: "Artist A", startedAt: now, listened: 180, outcome: .played))
+        store.record(session(title: "Recent", artist: "Artist A", startedAt: now.addingTimeInterval(-86_400), listened: 120, outcome: .played))
+        store.record(session(title: "Old", artist: "Artist B", startedAt: now.addingTimeInterval(-8 * 86_400), listened: 600, outcome: .played))
+        let recap = WeeklyListeningRecap(
+            records: try store.context.fetch(FetchDescriptor<ActivityRecord>()),
+            now: now
+        )
+        #expect(recap.listens == 2)
+        #expect(recap.minutes == 5)
+        #expect(recap.uniqueArtists == 1)
+        #expect(recap.topArtist == "Artist A")
+        #expect(recap.shareText.contains("2 listens"))
+    }
+
     @Test func csvEscapesMetadataAndClearHistoryDoesNotTouchQueue() throws {
         let store = try PersistenceStore(inMemory: true)
         let value = session(title: "A, \"Quoted\" Song", artist: "Artist", startedAt: .now, listened: 60, outcome: .played)
@@ -1195,6 +1267,11 @@ struct BackupAndExtendedInsightsTests {
         let sourceDefaults = UserDefaults(suiteName: UUID().uuidString)!
         let preferences = Preferences(defaults: sourceDefaults)
         preferences.discordActivityName = "Tunes with {artist}"
+        preferences.discordPresenceProfiles = [
+            DiscordPresenceProfile.capture(name: "Backup Profile", preferences: preferences)
+        ]
+        preferences.excludedScrobbleArtists = "Private Artist"
+        preferences.excludedScrobblePlatforms = [.youtubeMusic]
         let value = session(title: "Café, \"Night\" 🎵", startedAt: .now, platform: .spotify)
         source.record(value)
         source.enqueue(value)
@@ -1215,6 +1292,9 @@ struct BackupAndExtendedInsightsTests {
         #expect(restored.platformRaw == PlaybackPlatform.spotify.rawValue)
         #expect(try target.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == 1)
         #expect(targetPreferences.discordActivityName == "Tunes with {artist}")
+        #expect(targetPreferences.discordPresenceProfiles.first?.name == "Backup Profile")
+        #expect(targetPreferences.excludedScrobbleArtists == "Private Artist")
+        #expect(targetPreferences.excludedScrobblePlatforms == [.youtubeMusic])
         #expect(!targetPreferences.lastFMEnabled)
     }
 

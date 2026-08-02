@@ -122,6 +122,56 @@ struct PlatformListenCount: Identifiable, Equatable {
     var id: String { platform }
 }
 
+struct WeeklyListeningRecap: Equatable {
+    let listens: Int
+    let minutes: Int
+    let uniqueArtists: Int
+    let topArtist: String?
+    let topTrack: String?
+    let topAlbum: String?
+    let topPlatform: String?
+    let busiestDay: String?
+
+    @MainActor
+    init(records: [ActivityRecord], now: Date = .now, calendar: Calendar = .current) {
+        let start = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -6, to: now) ?? now)
+        let played = records.filter { $0.startedAt >= start && $0.startedAt <= now && $0.countsAsListen }
+        listens = played.count
+        let seconds = played.reduce(0.0) {
+            $0 + max(0, $1.listenedTime ?? $1.trackDuration ?? $1.duration ?? 0)
+        }
+        minutes = Int((seconds / 60).rounded())
+        uniqueArtists = Set(played.map { $0.artist.localizedLowercase }).count
+        topArtist = Self.mostFrequent(played.map(\.artist))
+        topTrack = Self.mostFrequent(played.map { "\($0.title) — \($0.artist)" })
+        topAlbum = Self.mostFrequent(played.compactMap(\.album).filter { !$0.isEmpty })
+        topPlatform = Self.mostFrequent(played.compactMap(\.platformRaw))
+        let dayFormatter = DateFormatter()
+        dayFormatter.locale = .current
+        dayFormatter.setLocalizedDateFormatFromTemplate("EEEE")
+        let groupedDays = Dictionary(grouping: played) { calendar.startOfDay(for: $0.startedAt) }
+        busiestDay = groupedDays.max {
+            if $0.value.count != $1.value.count { return $0.value.count < $1.value.count }
+            return $0.key > $1.key
+        }.map { dayFormatter.string(from: $0.key) }
+    }
+
+    var shareText: String {
+        var parts = ["My PresenceFM week: \(listens) listens, \(minutes) minutes, \(uniqueArtists) artists."]
+        if let topArtist { parts.append("Top artist: \(topArtist).") }
+        if let topTrack { parts.append("Top track: \(topTrack).") }
+        if let busiestDay { parts.append("Busiest day: \(busiestDay).") }
+        return parts.joined(separator: " ")
+    }
+
+    private static func mostFrequent(_ values: [String]) -> String? {
+        Dictionary(grouping: values, by: { $0 }).max {
+            if $0.value.count != $1.value.count { return $0.value.count < $1.value.count }
+            return $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedDescending
+        }?.key
+    }
+}
+
 struct ExtendedListeningInsights {
     let comparison: MetricComparison
     let topTracks: [RankedListen]

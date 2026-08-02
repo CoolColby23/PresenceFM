@@ -1,3 +1,4 @@
+import AppKit
 import Charts
 import SwiftData
 import SwiftUI
@@ -25,6 +26,7 @@ struct ListeningHistoryView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
                         historyHeader
+                        weeklyRecapCard
                         summaryGrid
                         listeningOverview
                         extendedInsightCards
@@ -76,7 +78,6 @@ struct ListeningHistoryView: View {
     private var extendedInsights: ExtendedListeningInsights {
         ExtendedListeningInsights(records: records, period: period)
     }
-
     private var historyHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Your listening, at a glance")
@@ -86,6 +87,47 @@ struct ListeningHistoryView: View {
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private var weeklyRecapCard: some View {
+        let weeklyRecap = WeeklyListeningRecap(records: records)
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Your Week in Music", systemImage: "sparkles")
+                    .font(.title3.bold())
+                Spacer()
+                Button("Copy Recap", systemImage: "doc.on.doc") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(weeklyRecap.shareText, forType: .string)
+                }
+                .disabled(weeklyRecap.listens == 0)
+            }
+            if weeklyRecap.listens == 0 {
+                Text("Your weekly recap will appear after you finish a listen.")
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 24) {
+                    RecapValue(value: weeklyRecap.listens.formatted(), label: "Listens")
+                    RecapValue(value: weeklyRecap.minutes.formatted(), label: "Minutes")
+                    RecapValue(value: weeklyRecap.uniqueArtists.formatted(), label: "Artists")
+                }
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 190), alignment: .leading)],
+                    alignment: .leading,
+                    spacing: 10
+                ) {
+                    if let value = weeklyRecap.topArtist { LabeledContent("Top artist", value: value) }
+                    if let value = weeklyRecap.topTrack { LabeledContent("Top track", value: value) }
+                    if let value = weeklyRecap.topAlbum { LabeledContent("Top album", value: value) }
+                    if let value = weeklyRecap.topPlatform { LabeledContent("Top platform", value: value) }
+                    if let value = weeklyRecap.busiestDay { LabeledContent("Busiest day", value: value) }
+                }
+                .font(.callout)
+            }
+        }
+        .padding(20)
+        .presenceCard()
+        .accessibilityElement(children: .contain)
     }
 
     private var summaryGrid: some View {
@@ -513,6 +555,19 @@ private struct MetricIcon: View {
             .frame(width: 34, height: 34)
             .background(tint.opacity(0.12), in: .rect(cornerRadius: 9))
             .accessibilityHidden(true)
+    }
+}
+
+private struct RecapValue: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(.title2.bold().monospacedDigit())
+            Text(label).font(.caption).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

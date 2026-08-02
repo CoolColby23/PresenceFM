@@ -147,6 +147,7 @@ final class AppModel {
                 let changedTrack = snapshot.track?.identity != value.track?.identity
                 let previousArtworkData = artworkData
                 snapshot = value
+                WidgetSnapshotService.publish(value, isPrivate: isPrivate)
                 playbackPollMetrics = update.metrics
                 applyProviderHealth(update.providerHealth)
                 if changedTrack {
@@ -191,12 +192,14 @@ final class AppModel {
         preferences.privateMode = true
         preferences.privateUntil = until
         schedulePrivacyExpiration()
+        WidgetSnapshotService.publish(snapshot, isPrivate: true)
         Task { await discord.clear() }
     }
 
     func endPrivateMode() {
         privacyTask?.cancel()
         preferences.privateMode = false; preferences.privateUntil = nil
+        WidgetSnapshotService.publish(snapshot, isPrivate: false)
         Task {
             await updateDiscord(); await updateOperationalNotifications()
         }
@@ -297,7 +300,9 @@ final class AppModel {
             switch event {
             case .started(let session):
                 activeSession = session
-                if preferences.lastFMEnabled && preferences.sendNowPlaying && allowsExternalPublishing {
+                if preferences.lastFMEnabled && preferences.sendNowPlaying && allowsExternalPublishing
+                    && scrobbleExclusionReason(for: session.track) == nil
+                {
                     Task { [weak self] in
                         guard let self else { return }
                         do { try await self.lastFM.updateNowPlaying(session); self.lastFMStatus = .connected } catch { self.updateLastFMStatus(for: error) }
@@ -309,7 +314,9 @@ final class AppModel {
             // render duplicate rows. Submit once playback actually finishes instead.
             case .eligible(let session):
                 activeSession = session
-                if preferences.lastFMEnabled && allowsExternalPublishing {
+                if preferences.lastFMEnabled && allowsExternalPublishing
+                    && scrobbleExclusionReason(for: session.track) == nil
+                {
                     pendingScrobbleSessionIDs.insert(session.id)
                 }
             case .finalized(let session): finalize(session, artworkData: finalizedArtworkData)
@@ -388,6 +395,35 @@ final class AppModel {
         Task {
             await discord.clear(); await updateDiscord()
         }
+    }
+
+    @discardableResult
+    func saveDiscordProfile(named name: String) -> UUID? {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return nil }
+        let profile = DiscordPresenceProfile.capture(name: trimmedName, preferences: preferences)
+        preferences.discordPresenceProfiles.append(profile)
+        preferences.selectedDiscordProfileID = profile.id
+        return profile.id
+    }
+
+    func applyDiscordProfile(id: UUID) {
+        guard let profile = preferences.availableDiscordProfiles.first(where: { $0.id == id }) else { return }
+        profile.apply(to: preferences)
+        preferences.selectedDiscordProfileID = id
+        refreshPresenceOptions()
+    }
+
+    func deleteDiscordProfile(id: UUID) {
+        guard !DiscordPresenceProfile.builtIns.contains(where: { $0.id == id }) else { return }
+        preferences.discordPresenceProfiles.removeAll { $0.id == id }
+        if preferences.selectedDiscordProfileID == id { preferences.selectedDiscordProfileID = nil }
+    }
+
+    func refreshScrobbleRules() {
+        guard let session = activeSession,
+              scrobbleExclusionReason(for: session.track) != nil else { return }
+        pendingScrobbleSessionIDs.remove(session.id)
     }
 
     func setPlaybackProvider(_ provider: PlaybackProviderID, enabled: Bool) {
@@ -559,7 +595,11 @@ final class AppModel {
         } catch { persistenceRecoveryStatus = "Quit and reopen PresenceFM to retry. \(error.localizedDescription)" }
     }
 
-    var scrobblePresentation: ScrobblePresentationState? { activeSession?.scrobblePresentation }
+    var scrobblePresentation: ScrobblePresentationState? {
+        guard let activeSession else { return nil }
+        if let reason = scrobbleExclusionReason(for: activeSession.track) { return .ineligible(reason) }
+        return activeSession.scrobblePresentation
+    }
     var playbackServiceName: String {
         if demoModeEnabled { return "Demo Playback" }
         return snapshot.track?.platform.rawValue ?? "Music playback"
@@ -662,6 +702,10 @@ final class AppModel {
     }
 
     var allowsExternalPublishing: Bool { !isPrivate && !demoModeEnabled }
+
+    private func scrobbleExclusionReason(for track: TrackMetadata) -> String? {
+        preferences.scrobbleExclusionRules.reason(for: track)
+    }
 
     var integrationHealth: [IntegrationHealth] {
         PlaybackProviderID.allCases.map { id in
@@ -809,6 +853,30 @@ final class Preferences {
             defaults.set(playbackProviderOrder.map(\.rawValue), forKey: "playbackProviderOrder")
         }
     }
+    var discordPresenceProfiles: [DiscordPresenceProfile] {
+        didSet {
+            if let data = try? JSONEncoder().encode(discordPresenceProfiles) {
+                defaults.set(data, forKey: "discordPresenceProfiles")
+            }
+        }
+    }
+    var selectedDiscordProfileID: UUID? {
+        didSet { defaults.set(selectedDiscordProfileID?.uuidString, forKey: "selectedDiscordProfileID") }
+    }
+    var excludedScrobbleArtists: String {
+        didSet { defaults.set(excludedScrobbleArtists, forKey: "excludedScrobbleArtists") }
+    }
+    var excludedScrobbleAlbums: String {
+        didSet { defaults.set(excludedScrobbleAlbums, forKey: "excludedScrobbleAlbums") }
+    }
+    var excludedScrobbleTitleTerms: String {
+        didSet { defaults.set(excludedScrobbleTitleTerms, forKey: "excludedScrobbleTitleTerms") }
+    }
+    var excludedScrobblePlatforms: Set<PlaybackPlatform> {
+        didSet {
+            defaults.set(excludedScrobblePlatforms.map(\.rawValue).sorted(), forKey: "excludedScrobblePlatforms")
+        }
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -848,6 +916,15 @@ final class Preferences {
         }
         playbackProviderOrder = PlaybackProviderID.normalizedOrder(
             defaults.stringArray(forKey: "playbackProviderOrder")?.compactMap(PlaybackProviderID.init(rawValue:)) ?? []
+        )
+        discordPresenceProfiles = defaults.data(forKey: "discordPresenceProfiles")
+            .flatMap { try? JSONDecoder().decode([DiscordPresenceProfile].self, from: $0) } ?? []
+        selectedDiscordProfileID = defaults.string(forKey: "selectedDiscordProfileID").flatMap(UUID.init(uuidString:))
+        excludedScrobbleArtists = defaults.string(forKey: "excludedScrobbleArtists") ?? ""
+        excludedScrobbleAlbums = defaults.string(forKey: "excludedScrobbleAlbums") ?? ""
+        excludedScrobbleTitleTerms = defaults.string(forKey: "excludedScrobbleTitleTerms") ?? ""
+        excludedScrobblePlatforms = Set(
+            defaults.stringArray(forKey: "excludedScrobblePlatforms")?.compactMap(PlaybackPlatform.init(rawValue:)) ?? []
         )
     }
 }
