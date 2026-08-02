@@ -15,6 +15,7 @@
 - Let rejected scrobbles be corrected and retried without changing their original listen time or duplicate protection.
 - Advance playback progress locally between provider polls, limit VoiceOver progress-value changes to 15-second intervals, and enforce a tested narrow dashboard minimum.
 - Add a credential-free Demo Mode with a one-command launch and dashboard controls that exercise the real playback, eligibility, and local-history pipeline while visibly pausing Discord and Last.fm publishing.
+- Remove synthetic listening-history records when Demo Mode ends while preserving every real listen, and prevent the outgoing demo track from being reinserted during the provider handoff.
 - Add Apple Music Radio metadata to Now Playing, Discord presence, local insights, and Last.fm; use the normal duration threshold or a 30-second observed fallback, omit radio duration, and mark radio scrobbles as not chosen by the user while continuing to exclude unsupported live streams.
 - Stop treating every unfinished or transiently unavailable track as skipped; recover brief provider gaps, credit an already-playing song's observed position, and distinguish listened radio, true track replacements, and interrupted sessions.
 - Add OpenAI Build Week judge instructions, Codex/GPT-5.6 implementation notes, and an under-three-minute demo script.

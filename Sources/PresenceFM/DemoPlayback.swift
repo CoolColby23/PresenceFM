@@ -3,6 +3,7 @@ import Foundation
 /// Deterministic, credential-free playback used for demos and judge evaluation.
 /// The short tracks exercise the real eligibility and history pipeline quickly.
 enum DemoPlaybackSequence {
+    static let persistentIDPrefix = "presencefm-demo-"
     static let trackDuration: TimeInterval = 32
     static let gapDuration: TimeInterval = 4
     static let cycleDuration = trackDuration + gapDuration
@@ -34,7 +35,7 @@ enum DemoPlaybackSequence {
 
         let value = tracks[cycleIndex % tracks.count]
         let track = TrackMetadata(
-            identity: .init(persistentID: "presencefm-demo-\(cycleIndex)"),
+            identity: .init(persistentID: "\(persistentIDPrefix)\(cycleIndex)"),
             title: value.title,
             artist: value.artist,
             album: value.album,
@@ -48,5 +49,9 @@ enum DemoPlaybackSequence {
             track: track, state: .playing, position: position,
             observedAt: now, confidence: .high
         )
+    }
+
+    static func contains(persistentID: String?) -> Bool {
+        persistentID?.hasPrefix(persistentIDPrefix) == true
     }
 }

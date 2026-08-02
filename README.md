@@ -16,9 +16,9 @@ swift run PresenceFM --demo
 The `--demo` launch skips onboarding for that run and immediately rotates short
 sample tracks through the production playback pipeline. It does not change the
 saved onboarding preference. Demo data is never published to Discord or Last.fm;
-completed demo listens remain local so the history and insights screens become
-testable after about a minute. Demo playback can also be started from the empty
-Now Playing dashboard or **Settings → Demo Mode**.
+completed demo listens make the history and insights screens testable after about
+a minute, then are removed when Demo Mode ends. Demo playback can also be started
+from the empty Now Playing dashboard or **Settings → Demo Mode**.
 
 See [Documentation/OPENAI-BUILD-WEEK.md](Documentation/OPENAI-BUILD-WEEK.md)
 for the problem statement, architecture, Codex/GPT-5.6 build notes, and judging

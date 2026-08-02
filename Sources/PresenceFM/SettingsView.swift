@@ -171,7 +171,7 @@ private struct GeneralSettingsSections: View {
         Section("Demo Mode") {
             Toggle("Simulate playback for a product tour", isOn: demoModeBinding)
             Text(
-                "Runs short sample tracks through the real now-playing and local-history pipeline. Discord and Last.fm publishing are paused while the demo is active."
+                "Runs short sample tracks through the real now-playing and local-history pipeline. Discord and Last.fm publishing are paused, and sample history is removed when the demo ends."
             )
             .font(.caption).foregroundStyle(.secondary)
         }

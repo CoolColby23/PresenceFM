@@ -325,7 +325,12 @@ final class AppModel {
         {
             queue.enqueue(session)
         }
-        activeSession = nil; recentSessions.insert(session, at: 0)
+        activeSession = nil
+        let isDemoSession = DemoPlaybackSequence.contains(
+            persistentID: session.track.identity.persistentID
+        )
+        guard !isDemoSession || demoModeEnabled else { return }
+        recentSessions.insert(session, at: 0)
         if recentSessions.count > 200 { recentSessions.removeLast() }
         store.record(session, artworkData: artworkData)
     }
@@ -409,6 +414,10 @@ final class AppModel {
         setArtworkData(nil)
         discordArtworkURL = nil
         if !enabled {
+            store.clearDemoActivity()
+            recentSessions.removeAll {
+                DemoPlaybackSequence.contains(persistentID: $0.track.identity.persistentID)
+            }
             // Do not leave synthetic metadata publishable while the monitor switches
             // back to real providers. The next provider snapshot will safely finalize
             // the demo session locally and replace this temporary stopped state.

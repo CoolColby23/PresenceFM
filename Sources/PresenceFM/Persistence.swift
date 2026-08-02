@@ -247,6 +247,16 @@ final class PersistenceStore {
         save()
     }
 
+    @discardableResult
+    func clearDemoActivity() -> Int {
+        guard let records = try? context.fetch(FetchDescriptor<ActivityRecord>()) else { return 0 }
+        let demoRecords = records.filter { DemoPlaybackSequence.contains(persistentID: $0.persistentID) }
+        guard !demoRecords.isEmpty else { return 0 }
+        demoRecords.forEach(context.delete)
+        save()
+        return demoRecords.count
+    }
+
     func applyHistoryRetention(days: Int) {
         removeActivity(olderThanDays: days)
         save()

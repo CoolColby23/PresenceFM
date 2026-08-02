@@ -804,6 +804,33 @@ struct PersistenceAndQueueTests {
         #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == 1)
     }
 
+    @Test func clearingDemoActivityPreservesRealHistory() throws {
+        let store = try PersistenceStore(inMemory: true)
+        let demoTrack = TrackMetadata(
+            identity: .init(persistentID: "\(DemoPlaybackSequence.persistentIDPrefix)42"),
+            title: "Demo Track", artist: "Demo Artist", album: nil, duration: 32,
+            source: .localFile, appleMusicURL: nil, artworkReference: nil
+        )
+        let demoSession = PlaybackSession(
+            id: UUID(), track: demoTrack, startedAt: .now, accumulatedPlayTime: 32,
+            lastPosition: 32, eligibility: .eligible, outcome: .played
+        )
+        let persisted = session()
+        let realSession = PlaybackSession(
+            id: persisted.id, track: persisted.track, startedAt: .now,
+            accumulatedPlayTime: persisted.accumulatedPlayTime,
+            lastPosition: persisted.lastPosition, eligibility: persisted.eligibility,
+            outcome: persisted.outcome
+        )
+        store.record(demoSession)
+        store.record(realSession)
+
+        #expect(store.clearDemoActivity() == 1)
+        let remaining = try store.context.fetch(FetchDescriptor<ActivityRecord>())
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.persistentID == "persisted")
+    }
+
     @Test func appleMusicRadioQueuePreservesUnknownDurationSignal() throws {
         let store = try PersistenceStore(inMemory: true)
         let track = TrackMetadata(
@@ -1423,8 +1450,9 @@ struct DemoPlaybackTests {
     @Test func launchModeSkipsOnboardingWithoutPersistingCompletion() throws {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let preferences = Preferences(defaults: defaults)
+        let store = try PersistenceStore(inMemory: true)
         let model = AppModel(
-            store: try PersistenceStore(inMemory: true),
+            store: store,
             preferences: preferences,
             notifications: NotificationCoordinator(delivery: FakeNotificationDelivery()),
             launchInDemoMode: true
@@ -1438,12 +1466,21 @@ struct DemoPlaybackTests {
         preferences.privateMode = false
         #expect(!model.allowsExternalPublishing)
 
-        model.snapshot = DemoPlaybackSequence.snapshot(at: Date(), startedAt: Date())
+        let demoSnapshot = DemoPlaybackSequence.snapshot(at: Date(), startedAt: Date())
+        let demoTrack = try #require(demoSnapshot.track)
+        store.record(PlaybackSession(
+            id: UUID(), track: demoTrack, startedAt: .now, accumulatedPlayTime: 32,
+            lastPosition: 32, eligibility: .eligible, outcome: .played
+        ))
+        #expect(try store.context.fetchCount(FetchDescriptor<ActivityRecord>()) == 1)
+
+        model.snapshot = demoSnapshot
         model.setDemoModeEnabled(false)
         #expect(model.allowsExternalPublishing)
         #expect(model.snapshot.track == nil)
         #expect(model.snapshot.state == .stopped)
         #expect(model.musicStatus == .connecting)
+        #expect(try store.context.fetchCount(FetchDescriptor<ActivityRecord>()) == 0)
 
         preferences.privateMode = true
         #expect(!model.allowsExternalPublishing)
