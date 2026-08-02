@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "constValueProtocols": [
+    "AppEnum",
+    "AppIntent",
+    "AppShortcutsProvider"
+  ]
+}

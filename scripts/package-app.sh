@@ -6,7 +6,7 @@ cd "$ROOT"
 "$ROOT/scripts/sync-brand-assets.sh"
 INTENT_CONSTANTS_DIRECTORY="$ROOT/.build/presencefm-app-intents"
 INTENT_CONSTANTS="$INTENT_CONSTANTS_DIRECTORY/PresenceFM.swiftconstvalues"
-INTENT_PROTOCOLS="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/share/swift/SwiftConstantValues/AppIntents.json"
+INTENT_PROTOCOLS="$ROOT/scripts/AppIntentsConstantValueProtocols.json"
 [[ -f "$INTENT_PROTOCOLS" ]] || {
   echo "App Intents constant-value protocol list was not found" >&2
   exit 1
