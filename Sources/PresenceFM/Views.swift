@@ -7,19 +7,34 @@ struct DashboardView: View {
     var body: some View {
         @Bindable var model = model
         NavigationSplitView {
-            List(DashboardSection.allCases, selection: $model.selectedSection) { section in
-                Label(section.rawValue, systemImage: section.symbol)
-                    .tag(section)
-                    .accessibilityIdentifier("dashboard.section.\(section.id.rawValue)")
-            }
-            .accessibilityIdentifier("dashboard.navigation")
-            .navigationTitle("PresenceFM")
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
-            .safeAreaInset(edge: .bottom) {
-                SidebarPrivacyControl()
-                    .padding(.horizontal, 12)
+            VStack(spacing: 0) {
+                SidebarHeader()
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
                     .padding(.bottom, 10)
+                List(DashboardSection.allCases, selection: $model.selectedSection) { section in
+                    Label(section.rawValue, systemImage: section.symbol)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(model.selectedSection == section ? BrandColors.electricBlue : .primary)
+                        .padding(.vertical, 4)
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: BrandRadius.md, style: .continuous)
+                                .fill(model.selectedSection == section ? BrandColors.electricBlue.opacity(0.16) : Color.clear)
+                                .padding(.vertical, 2)
+                        )
+                        .tag(section)
+                        .accessibilityIdentifier("dashboard.section.\(section.id.rawValue)")
+                }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+                .accessibilityIdentifier("dashboard.navigation")
+                .safeAreaInset(edge: .bottom) {
+                    SidebarPrivacyControl()
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                }
             }
+            .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 310)
         } detail: {
             Group {
                 switch model.selectedSection {
@@ -38,15 +53,18 @@ struct DashboardView: View {
                 PersistenceRecoveryBanner(message: issue)
             }
         }
+        .presencePanelBackground()
         .frame(minWidth: DashboardLayout.minimumWidth, minHeight: DashboardLayout.minimumHeight)
     }
 }
 
 struct NowPlayingView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.
+        accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ScrollView {
-            VStack(spacing: 30) {
+            VStack(spacing: BrandSpacing.xxxl) {
                 if model.demoModeEnabled {
                     HStack(spacing: 14) {
                         Label("Demo playback is active — Discord and Last.fm publishing are paused", systemImage: "testtube.2")
@@ -55,33 +73,13 @@ struct NowPlayingView: View {
                         Spacer()
                         Button("End Demo") { model.setDemoModeEnabled(false) }
                     }
-                    .padding(14)
-                    .presenceCard()
-                    .frame(maxWidth: 820)
+                    .padding(16)
+                    .presenceCard(elevated: true)
+                    .frame(maxWidth: 960)
                     .accessibilityElement(children: .contain)
                 }
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .center, spacing: 34) {
-                        ArtworkView(
-                            image: model.artworkImage,
-                            size: 260,
-                            accessibilityDescription: artworkAccessibilityDescription
-                        )
-                        nowPlayingDetails
-                            .frame(minWidth: 380, maxWidth: 520, alignment: .leading)
-                    }
-                    VStack(spacing: 24) {
-                        ArtworkView(
-                            image: model.artworkImage,
-                            size: 200,
-                            accessibilityDescription: artworkAccessibilityDescription
-                        )
-                        nowPlayingDetails
-                            .frame(maxWidth: 520, alignment: .leading)
-                    }
-                }
-                .frame(maxWidth: 820)
-                Divider()
+                heroSection
+                    .frame(maxWidth: 1040)
                 VStack(spacing: 0) {
                     ServiceHealthRow(
                         title: model.playbackServiceName,
@@ -113,22 +111,59 @@ struct NowPlayingView: View {
                         recoveryAction: { model.selectedSection = .settings }
                     )
                 }
-                .frame(maxWidth: 820)
-            }.padding(36).frame(maxWidth: .infinity)
-        }.navigationTitle("Now Playing")
+                .frame(maxWidth: 1040)
+            }
+            .padding(BrandSpacing.xxl)
+            .frame(maxWidth: .infinity)
+        }
+        .navigationTitle("Now Playing")
     }
 
+    private var heroSection: some View {
+        let currentTrackID = model.snapshot.track?.identity.persistentID ?? "empty"
+        let isPlaying = model.snapshot.state == .playing && !reduceMotion
+        return ZStack {
+            heroBackground
+            VStack(alignment: .leading, spacing: BrandSpacing.xl) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: BrandSpacing.xl) {
+                        heroArtwork(size: 300, isPlaying: isPlaying)
+                        nowPlayingDetails
+                            .frame(minWidth: 380, maxWidth: 560, alignment: .leading)
+                    }
+                    VStack(spacing: BrandSpacing.lg) {
+                        heroArtwork(size: 220, isPlaying: isPlaying)
+                        nowPlayingDetails
+                            .frame(maxWidth: 620, alignment: .leading)
+                    }
+                }
+            }
+            .padding(BrandSpacing.xxl)
+        }
+        .frame(maxWidth: .infinity)
+        .clipShape(.rect(cornerRadius: BrandRadius.xxl, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: BrandRadius.xxl, style: .continuous)
+                .strokeBorder(BrandColors.cyan.opacity(0.16), lineWidth: 1)
+        }
+        .presenceCard(elevated: true)
+        .presenceHeroGlow(active: model.snapshot.state == .playing)
+        .animation(.easeInOut(duration: 0.28), value: currentTrackID)
+    }
+
+    @ViewBuilder
     private var nowPlayingDetails: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(playbackLabel)
+        VStack(alignment: .leading, spacing: BrandSpacing.md) {
+            Label(playbackLabel, systemImage: model.snapshot.state == .playing ? "dot.radiowaves.left.and.right" : "music.note")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .labelStyle(.titleAndIcon)
                 .textCase(.uppercase)
             Text(model.snapshot.track?.title ?? "Nothing Playing")
-                .font(.largeTitle.bold())
+                .font(BrandTypography.heroTitle)
                 .lineLimit(2)
             Text(metadataLabel)
-                .font(.title2)
+                .font(.title3.weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
             if let track = model.snapshot.track {
@@ -137,16 +172,18 @@ struct NowPlayingView: View {
                 }
                 ScrobbleProgress(state: model.scrobblePresentation)
                 if let url = track.appleMusicURL {
-                    Link("Open in \(track.platform.rawValue)", destination: url).presenceButton()
+                    Link("Open in \(track.platform.rawValue)", destination: url)
+                        .presenceButton(prominent: true)
                 }
             } else {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     if model.demoModeEnabled {
                         Text("Starting safe demo playback…")
                     } else {
                         Text("Play something in a supported music app and PresenceFM will pick it up automatically.")
                         Text("Apple Music · Spotify · YouTube Music · TIDAL")
                             .font(.callout.weight(.medium))
+                            .foregroundStyle(.secondary)
                         Button("Start Demo Playback", systemImage: "play.fill") {
                             model.setDemoModeEnabled(true)
                         }
@@ -154,7 +191,7 @@ struct NowPlayingView: View {
                         .help("Try PresenceFM without a music app or service account")
                     }
                 }
-                .foregroundStyle(.secondary)
+                .padding(.top, 4)
             }
         }
     }
@@ -171,6 +208,65 @@ struct NowPlayingView: View {
     private var artworkAccessibilityDescription: String {
         guard let track = model.snapshot.track else { return "Album artwork unavailable" }
         return model.artworkImage == nil ? "Album artwork unavailable for \(track.title)" : "Album artwork for \(track.title)"
+    }
+
+    private func heroArtwork(size: CGFloat, isPlaying: Bool) -> some View {
+        ZStack {
+            ArtworkView(
+                image: model.artworkImage,
+                size: size,
+                accessibilityDescription: artworkAccessibilityDescription
+            )
+            .presenceHeroGlow(active: isPlaying)
+            .overlay(alignment: .bottomTrailing) {
+                if isPlaying {
+                    SpinningBrandMark(isSpinning: true)
+                        .frame(width: size * 0.28, height: size * 0.28)
+                        .padding(size * 0.055)
+                        .background(.ultraThinMaterial, in: .circle)
+                        .shadow(color: BrandColors.cyan.opacity(0.26), radius: 18, y: 8)
+                }
+            }
+        }
+        .id(currentTrackIdentifier)
+        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+    }
+
+    private var currentTrackIdentifier: String {
+        model.snapshot.track?.identity.persistentID ?? "empty"
+    }
+
+    private var heroBackground: some View {
+        ZStack {
+            if let image = model.artworkImage {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .blur(radius: 68)
+                    .scaleEffect(1.18)
+                    .opacity(0.34)
+            } else {
+                LinearGradient(
+                    colors: [BrandColors.cyan.opacity(0.18), BrandColors.electricBlue.opacity(0.12), Color.clear],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+            Rectangle().fill(BrandColors.ink.opacity(0.52))
+            RadialGradient(
+                colors: [BrandColors.cyan.opacity(0.20), .clear],
+                center: .topLeading,
+                startRadius: 10,
+                endRadius: 560
+            )
+            RadialGradient(
+                colors: [BrandColors.electricBlue.opacity(0.18), .clear],
+                center: .bottomTrailing,
+                startRadius: 10,
+                endRadius: 520
+            )
+        }
+        .clipped()
     }
 
     private var discordRecoveryTitle: String? {
@@ -210,15 +306,20 @@ struct ArtworkView: View {
                 Image(nsImage: image).resizable().scaledToFill()
             } else {
                 ZStack {
-                    Rectangle().fill(.regularMaterial)
-                    BrandMark().padding(size * 0.22)
+                    LinearGradient(
+                        colors: [BrandColors.ink, BrandColors.night, BrandColors.electricBlue.opacity(0.55)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    BrandMark()
+                        .padding(size * 0.2)
                 }
             }
         }
         .frame(width: size, height: size)
-        .clipShape(.rect(cornerRadius: size * 0.1))
-        .overlay { RoundedRectangle(cornerRadius: size * 0.1).stroke(.white.opacity(0.12)) }
-        .shadow(color: .black.opacity(0.22), radius: size * 0.08, y: size * 0.04)
+        .clipShape(.rect(cornerRadius: size * 0.12, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: size * 0.12, style: .continuous).strokeBorder(.white.opacity(0.14), lineWidth: 1) }
+        .shadow(color: .black.opacity(0.24), radius: size * 0.10, y: size * 0.05)
         .accessibilityLabel(accessibilityDescription ?? (image == nil && data == nil ? "Album artwork unavailable" : "Album artwork"))
     }
 }
@@ -239,11 +340,13 @@ struct ScrobbleProgress: View {
                     if case .listening(_, let remaining) = state { Text("\(remaining.formattedDuration) to go").font(.caption).foregroundStyle(.secondary) }
                 }
                 switch state {
-                case .listening(let progress, _): ProgressView(value: progress).tint(BrandColors.electricBlue)
+                case .listening(let progress, _): ProgressView(value: progress).tint(BrandColors.accentRibbon)
                 case .ineligible(let reason): Text(reason).font(.caption).foregroundStyle(.secondary)
                 default: EmptyView()
                 }
-            }.padding(14).presenceCard()
+            }
+            .padding(14)
+            .presenceCard(elevated: true)
         }
     }
 
@@ -254,10 +357,27 @@ struct ScrobbleProgress: View {
 
 struct StatusCapsule: View {
     let title: String; let status: ServiceStatus
+    @State private var pulse = false
+    @Environment(\.
+        accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Label("\(title): \(status.label)", systemImage: status.isConnected ? "checkmark.circle.fill" : "circle.dashed")
-            .font(.caption.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 8)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .presenceCard(capsule: true)
+            .overlay(alignment: .leading) {
+                Circle()
+                    .fill(status.isConnected ? BrandColors.success : BrandColors.neutral)
+                    .frame(width: 6, height: 6)
+                    .padding(.leading, 10)
+                    .opacity(status.isConnected ? 1 : 0.65)
+            }
+            .scaleEffect(status.isConnected && !reduceMotion ? (pulse ? 1.012 : 1.0) : 1.0)
+            .onAppear {
+                guard status.isConnected, !reduceMotion else { return }
+                pulse = true
+            }
     }
 }
 
@@ -273,21 +393,27 @@ struct ServiceHealthRow: View {
     var body: some View {
         HStack(spacing: 14) {
             HStack(spacing: 14) {
-                Image(systemName: symbol)
-                    .font(.title3)
-                    .foregroundStyle(BrandColors.electricBlue)
-                    .frame(width: 28)
+                ZStack {
+                    RoundedRectangle(cornerRadius: BrandRadius.md, style: .continuous)
+                        .fill(BrandColors.accentRibbon.opacity(0.14))
+                    Image(systemName: symbol)
+                        .font(.title3)
+                        .foregroundStyle(BrandColors.electricBlue)
+                }
+                .frame(width: 38, height: 38)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.headline)
+                    Text(title).font(BrandTypography.cardTitle)
                     Text(detail).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                ServiceStatusIndicator(status: status, labelOverride: statusLabelOverride)
-                Text(statusLabelOverride ?? status.label)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                VStack(alignment: .trailing, spacing: 6) {
+                    StatusCapsule(title: title, status: status)
+                    Text(statusLabelOverride ?? status.label)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(title), \(statusLabelOverride ?? status.label)")
@@ -297,8 +423,8 @@ struct ServiceHealthRow: View {
                     .accessibilityIdentifier("recovery.\(recoveryIdentifier)")
             }
         }
-        .padding(.vertical, 14)
-        .contentShape(.rect)
+        .padding(16)
+        .presenceCard(elevated: true)
         .accessibilityElement(children: .contain)
     }
 
@@ -333,7 +459,7 @@ struct SidebarPrivacyControl: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Label(model.isPrivate ? "Private Mode is on" : "Go Private", systemImage: model.isPrivate ? "eye.slash.fill" : "eye.slash")
                 .font(.headline)
             Text(model.isPrivate ? privateDetail : "Pause Discord sharing and Last.fm updates at any time.")
@@ -342,9 +468,9 @@ struct SidebarPrivacyControl: View {
                 .fixedSize(horizontal: false, vertical: true)
             PrivacyControls()
         }
-        .padding(.top, 12)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) { Divider() }
+        .presenceCard(elevated: true)
     }
 
     private var privateDetail: String {

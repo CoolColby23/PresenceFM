@@ -57,8 +57,10 @@ struct SettingsView: View {
                 }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Settings")
+        .presencePanelBackground()
         .fileExporter(
             isPresented: $showingBackupExporter,
             document: backupDocument,

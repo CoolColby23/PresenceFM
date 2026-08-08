@@ -14,32 +14,8 @@ struct OnboardingView: View {
     var body: some View {
         @Bindable var model = model
         @Bindable var preferences = model.preferences
-        VStack(spacing: 24) {
-            ZStack {
-                HStack {
-                    ForEach(steps.indices, id: \.self) { index in
-                        Circle()
-                            .fill(index <= step ? Color.accentColor : .secondary.opacity(0.25))
-                            .frame(width: 8, height: 8)
-                            .accessibilityHidden(true)
-                    }
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Step \(step + 1) of \(steps.count): \(steps[step])")
-
-                if preferences.onboardingComplete {
-                    HStack {
-                        Spacer()
-                        Button("Close", systemImage: "xmark") {
-                            model.onboardingPresented = false
-                        }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.plain)
-                        .help("Close onboarding")
-                        .accessibilityLabel("Close Onboarding")
-                    }
-                }
-            }
+        VStack(spacing: BrandSpacing.xl) {
+            header(preferences: preferences)
             Group {
                 switch step {
                 case 0:
@@ -127,7 +103,11 @@ struct OnboardingView: View {
                             "Play a song in one of your selected music apps. Optional integrations can be connected or skipped at any time, and every connection has a recovery path in the dashboard."
                     )
                 }
-            }.frame(maxWidth: 560, minHeight: 310)
+            }
+            .frame(maxWidth: 600, minHeight: 330)
+            .padding(28)
+            .presenceCard(elevated: true)
+
             HStack {
                 Button("Back") { step -= 1 }.disabled(step == 0)
                 Spacer()
@@ -142,8 +122,9 @@ struct OnboardingView: View {
                 }
             }
         }
-        .padding(32)
-        .frame(width: 700, height: 520)
+        .padding(BrandSpacing.xxl)
+        .frame(width: 760, height: 600)
+        .presencePanelBackground()
         .interactiveDismissDisabled(!preferences.onboardingComplete)
         .onAppear(perform: loadPreferences)
         .onExitCommand {
@@ -152,6 +133,48 @@ struct OnboardingView: View {
             } else if step > 0 {
                 step -= 1
             }
+        }
+    }
+
+    private func header(preferences: Preferences) -> some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        BrandMark()
+                            .frame(width: 32, height: 32)
+                            .padding(8)
+                            .background(.ultraThinMaterial, in: .circle)
+                        Text("PresenceFM")
+                            .font(BrandTypography.sectionTitle)
+                    }
+                    Text("Set up sharing, scrobbling, privacy, and startup behavior in a few quick steps.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if preferences.onboardingComplete {
+                    Button("Close", systemImage: "xmark") {
+                        model.onboardingPresented = false
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.plain)
+                    .help("Close onboarding")
+                    .accessibilityLabel("Close Onboarding")
+                }
+            }
+
+            HStack(spacing: 8) {
+                ForEach(steps.indices, id: \.self) { index in
+                    Capsule()
+                        .fill(index <= step ? BrandColors.accentRibbon : BrandColors.steel.opacity(0.20))
+                        .frame(height: 8)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Step \(step + 1) of \(steps.count): \(steps[step])")
         }
     }
 
@@ -191,9 +214,20 @@ struct IntroStep: View {
     var branded = false
 
     var body: some View {
-        VStack(spacing: 18) {
-            if branded { BrandMark().frame(width: 76, height: 76) } else { Image(systemName: symbol).font(.system(size: 64)).foregroundStyle(.tint) }
-            Text(title).font(.largeTitle.bold())
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(BrandColors.accentRibbon.opacity(0.14))
+                    .frame(width: 92, height: 92)
+                if branded {
+                    BrandMark().frame(width: 62, height: 62)
+                } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 38, weight: .semibold, design: .rounded))
+                        .foregroundStyle(BrandColors.electricBlue)
+                }
+            }
+            Text(title).font(BrandTypography.heroTitle)
             Text(text)
                 .font(.title3)
                 .foregroundStyle(.secondary)

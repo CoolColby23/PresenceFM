@@ -3,11 +3,73 @@ import SwiftUI
 
 enum BrandColors {
     static let electricBlue = Color(red: 31.0 / 255.0, green: 102.0 / 255.0, blue: 1.0)
+    static let electricBlueSoft = Color(red: 31.0 / 255.0, green: 102.0 / 255.0, blue: 1.0).opacity(0.18)
     static let cyan = Color(red: 20.0 / 255.0, green: 217.0 / 255.0, blue: 1.0)
+    static let cyanSoft = Color(red: 20.0 / 255.0, green: 217.0 / 255.0, blue: 1.0).opacity(0.18)
+    static let night = Color(red: 7.0 / 255.0, green: 20.0 / 255.0, blue: 47.0 / 255.0)
+    static let ink = Color(red: 11.0 / 255.0, green: 16.0 / 255.0, blue: 32.0 / 255.0)
+    static let cloud = Color(red: 247.0 / 255.0, green: 249.0 / 255.0, blue: 1.0)
+    static let fog = Color(red: 237.0 / 255.0, green: 241.0 / 255.0, blue: 249.0 / 255.0)
+    static let slate = Color(red: 77.0 / 255.0, green: 88.0 / 255.0, blue: 115.0 / 255.0)
+    static let mist = Color(red: 174.0 / 255.0, green: 185.0 / 255.0, blue: 212.0 / 255.0)
+    static let steel = Color(red: 120.0 / 255.0, green: 132.0 / 255.0, blue: 162.0 / 255.0)
     static let success = Color(red: 36.0 / 255.0, green: 138.0 / 255.0, blue: 61.0 / 255.0)
     static let warning = Color(red: 184.0 / 255.0, green: 92.0 / 255.0, blue: 0.0)
     static let error = Color(red: 200.0 / 255.0, green: 34.0 / 255.0, blue: 50.0 / 255.0)
     static let neutral = Color(red: 102.0 / 255.0, green: 112.0 / 255.0, blue: 133.0 / 255.0)
+
+    static let discGradient = LinearGradient(
+        colors: [cyan, electricBlue],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    static let softSurfaceLight = Color.white.opacity(0.72)
+    static let softSurfaceDark = Color.white.opacity(0.06)
+
+    static let heroBackdropDark = LinearGradient(
+        colors: [night, ink, Color.black],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    static let heroBackdropLight = LinearGradient(
+        colors: [cloud, fog, Color.white],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    static let accentRibbon = LinearGradient(
+        colors: [cyan, electricBlue],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+}
+
+enum BrandSpacing {
+    static let xs: CGFloat = 6
+    static let sm: CGFloat = 10
+    static let md: CGFloat = 14
+    static let lg: CGFloat = 20
+    static let xl: CGFloat = 28
+    static let xxl: CGFloat = 36
+    static let xxxl: CGFloat = 48
+}
+
+enum BrandRadius {
+    static let sm: CGFloat = 10
+    static let md: CGFloat = 14
+    static let lg: CGFloat = 20
+    static let xl: CGFloat = 28
+    static let xxl: CGFloat = 36
+}
+
+enum BrandTypography {
+    static let heroTitle = Font.system(size: 38, weight: .bold, design: .rounded)
+    static let sectionTitle = Font.system(size: 22, weight: .semibold, design: .rounded)
+    static let cardTitle = Font.system(size: 17, weight: .semibold, design: .rounded)
+    static let body = Font.system(size: 15, weight: .regular, design: .rounded)
+    static let caption = Font.system(size: 12, weight: .medium, design: .rounded)
 }
 
 /// The PresenceFM disc, drawn natively so it remains crisp at every size.
@@ -66,6 +128,33 @@ struct BrandMark: View {
 
     private func circle(center: CGPoint, radius: CGFloat) -> CGRect {
         CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+    }
+}
+
+/// Slow continuous disc rotation while music is playing. Freezes when Reduce Motion is on.
+struct SpinningBrandMark: View {
+    var isSpinning = false
+    var monochrome = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(
+            .animation(
+                minimumInterval: reduceMotion || !isSpinning ? 1_000_000 : 1.0 / 30.0,
+                paused: reduceMotion || !isSpinning
+            )
+        ) { context in
+            let angle = rotationDegrees(at: context.date)
+            BrandMark(monochrome: monochrome)
+                .rotationEffect(.degrees(angle))
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func rotationDegrees(at date: Date) -> Double {
+        guard isSpinning, !reduceMotion else { return 0 }
+        // One revolution every 12 seconds — brand motion signature.
+        return (date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 12) / 12) * 360
     }
 }
 

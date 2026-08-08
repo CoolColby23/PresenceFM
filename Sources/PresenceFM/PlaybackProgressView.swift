@@ -24,7 +24,7 @@ private struct PlaybackProgressContent: View {
     var body: some View {
         VStack(spacing: 6) {
             ProgressView(value: min(max(position, 0), duration), total: max(duration, 1))
-                .tint(BrandColors.electricBlue)
+                .tint(BrandColors.accentRibbon)
                 .accessibilityLabel("Playback progress")
                 .accessibilityValue(
                     PlaybackProgressPresentation.accessibilityValue(
@@ -40,6 +40,7 @@ private struct PlaybackProgressContent: View {
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
         }
+        .padding(.vertical, 2)
     }
 }
 
