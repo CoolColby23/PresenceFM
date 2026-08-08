@@ -8,24 +8,27 @@ struct MenuBarControlCenterView: View {
 
     var body: some View {
         @Bindable var preferences = model.preferences
-        VStack(alignment: .leading, spacing: BrandSpacing.lg) {
-            header
-            nowPlaying
-            sharingControls(preferences: preferences)
-            MenuBarWeeklyRecapView()
-            PrivacyControls()
-            HStack {
-                Button("Dashboard") { NSApp.showDashboard(using: openWindow) }
-                SettingsLink { Text("Settings") }
-                Spacer()
-                Button("Quit") {
-                    model.shutdown(); NSApp.terminate(nil)
+        ScrollView {
+            VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+                header
+                nowPlaying
+                sharingControls(preferences: preferences)
+                MenuBarWeeklyRecapView()
+                PrivacyControls()
+                HStack {
+                    Button("Dashboard") { NSApp.showDashboard(using: openWindow) }
+                    SettingsLink { Text("Settings") }
+                    Spacer()
+                    Button("Quit") {
+                        model.shutdown(); NSApp.terminate(nil)
+                    }
                 }
+                .presenceButton()
             }
-            .presenceButton()
+            .padding(18)
         }
-        .padding(18)
-        .frame(width: 432, alignment: .leading)
+        .frame(width: 432)
+        .frame(maxHeight: 680)
         .presencePanelBackground()
         .task { model.start() }
     }

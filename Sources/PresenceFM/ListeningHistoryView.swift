@@ -45,10 +45,13 @@ struct ListeningHistoryView: View {
             ToolbarItemGroup {
                 Picker("Period", selection: $period) {
                     ForEach(HistoryPeriod.allCases) { Text($0.rawValue).tag($0) }
-                }.pickerStyle(.segmented).frame(width: 320)
+                }
+                .pickerStyle(.segmented)
+                .frame(minWidth: 200, idealWidth: 280, maxWidth: 320)
                 Picker("Outcome", selection: $outcome) {
                     ForEach(HistoryOutcomeFilter.allCases) { Text($0.rawValue).tag($0) }
-                }.frame(width: 125)
+                }
+                .frame(minWidth: 95, idealWidth: 120, maxWidth: 135)
                 Menu("More", systemImage: "ellipsis.circle") {
                     Button("Export Visible History…", systemImage: "square.and.arrow.up") { exportVisibleHistory() }
                         .disabled(filteredRecords.isEmpty)

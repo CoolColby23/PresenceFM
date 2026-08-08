@@ -344,8 +344,8 @@ struct ScrobbleProgress: View {
                 default: EmptyView()
                 }
             }
-            .padding(14)
-            .presenceCard(elevated: true)
+            .padding(12)
+            .background(BrandColors.electricBlue.opacity(0.08), in: .rect(cornerRadius: BrandRadius.md, style: .continuous))
         }
     }
 
@@ -355,27 +355,36 @@ struct ScrobbleProgress: View {
 }
 
 struct StatusCapsule: View {
-    let title: String; let status: ServiceStatus
+    let title: String
+    let status: ServiceStatus
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        Label("\(title): \(status.presentationLabel)", systemImage: status.isConnected ? "checkmark.circle.fill" : "circle.dashed")
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .presenceCard(capsule: true)
-            .overlay(alignment: .leading) {
-                Circle()
-                    .fill(status.isConnected ? BrandColors.success : BrandColors.neutral)
-                    .frame(width: 6, height: 6)
-                    .padding(.leading, 10)
-                    .opacity(status.isConnected ? 1 : 0.65)
-            }
-            .scaleEffect(status.isConnected && !reduceMotion ? (pulse ? 1.012 : 1.0) : 1.0)
-            .onAppear {
-                guard status.isConnected, !reduceMotion else { return }
-                pulse = true
-            }
+        HStack(spacing: 6) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 7, height: 7)
+            Text("\(title): \(status.presentationLabel)")
+                .font(.caption.weight(.semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .presenceCard(capsule: true)
+        .scaleEffect(status.isConnected && !reduceMotion ? (pulse ? 1.012 : 1.0) : 1.0)
+        .onAppear {
+            guard status.isConnected, !reduceMotion else { return }
+            pulse = true
+        }
+    }
+
+    private var statusColor: Color {
+        switch status {
+        case .connected: BrandColors.success
+        case .connecting, .awaitingPermission, .authorizationExpired: BrandColors.warning
+        case .failed: BrandColors.error
+        case .disabled, .inactive, .offline: BrandColors.neutral
+        }
     }
 }
 
@@ -422,19 +431,20 @@ struct ServiceHealthRow: View {
                         .foregroundStyle(BrandColors.electricBlue)
                 }
                 .frame(width: 38, height: 38)
-                    .accessibilityHidden(true)
+                .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(BrandTypography.cardTitle)
                     Text(detail).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
+                VStack(alignment: .trailing, spacing: 4) {
                     StatusCapsule(title: title, status: status)
-                    Text(statusLabelOverride ?? status.presentationLabel)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    if let detail = status.detailLabel {
+                    if let override = statusLabelOverride {
+                        Text(override)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else if let detail = status.detailLabel {
                         Text(detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -446,6 +456,7 @@ struct ServiceHealthRow: View {
             .accessibilityLabel("\(title), \(statusLabelOverride ?? status.presentationLabel)")
             if let recoveryTitle {
                 Button(recoveryTitle, action: recoveryAction)
+                    .presenceButton(prominent: true)
                     .accessibilityHint("Attempts to recover the \(title) connection")
                     .accessibilityIdentifier("recovery.\(recoveryIdentifier)")
             }
@@ -635,10 +646,10 @@ struct QueueView: View {
                 ForEach(queuedRecords) { record in
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(record.title).font(.headline)
-                            Text(record.artist).foregroundStyle(.secondary)
+                            Text(record.title).font(.headline).lineLimit(1)
+                            Text(record.artist).foregroundStyle(.secondary).lineLimit(1)
                             if let error = record.lastError, error != commonError {
-                                Text(error).font(.caption).foregroundStyle(BrandColors.error)
+                                Text(error).font(.caption).foregroundStyle(BrandColors.error).lineLimit(2)
                             }
                         }
                         Spacer()
