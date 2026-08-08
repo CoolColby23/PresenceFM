@@ -9,13 +9,11 @@ final class ScrobbleRetryPolicy {
     private init() {}
 
     /// Compute next retry delay (seconds) given attempt count.
-    /// Uses capped exponential backoff with jitter.
+    /// Compute next retry delay (seconds) given attempt count.
+    /// Uses the deterministic capped exponential backoff previously used by `retryDate`.
     func nextDelaySeconds(attempt: Int) -> TimeInterval {
-        let base: Double = 2.0
-        let maxDelay: Double = 60 * 10 // 10 minutes
-        let expo = pow(base, Double(min(attempt, 10)))
-        let jitter = Double.random(in: 0.5...1.0)
-        return min(expo * jitter, maxDelay)
+        let delay = min(IntegrationPolicy.scrobbleRetryMaximum, pow(2, Double(min(max(attempt, 1), 11))) * 5)
+        return delay
     }
 
     /// Determine if we should retry based on error and attempt count.
