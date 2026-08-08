@@ -1,0 +1,64 @@
+name: Preview Build
+
+on:
+  push:
+    branches:
+      - 'preview/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build preview (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show environment
+        run: |
+          sw_vers
+          swift --version
+
+      - name: Swift build
+        run: |
+          swift build -c debug
+
+      - name: Package DMG (if script available)
+        run: |
+          if [ -x scripts/package-app.sh ]; then
+            chmod +x scripts/package-app.sh
+            ./scripts/package-app.sh
+          else
+            echo "No packaging script found; skipping DMG packaging"
+          fi
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-dmg
+          path: |
+            PresenceFM-*.dmg
+            build/*.dmg
+
+      - name: Create draft Preview release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: preview-${{ github.sha }}
+          release_name: Preview build ${{ github.ref_name }}
+          draft: true
+          prerelease: true
+
+      - name: Upload DMG to draft release
+        if: steps.create_release.outputs.upload_url != ''
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: PresenceFM-*.dmg
+          asset_name: PresenceFM-preview.dmg
+          asset_content_type: application/octet-stream

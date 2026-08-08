@@ -85,27 +85,32 @@ final class ScrobbleQueue {
                 if case .rejected = error { record.state = .permanentlyFailed }
                 else if case .api(let code, _) = error, [4, 6, 7, 8, 9, 10, 13, 14, 15, 26].contains(code) { record.state = .permanentlyFailed }
                 else {
+                    // Use centralized retry policy to compute next attempt time and decide retryability.
                     record.state = .pending
                     let rateLimitDelay: TimeInterval = {
                         if case .api(let code, _) = error, code == 29 { return 60 }
                         return 0
                     }()
-                    record.nextAttemptAt = max(retryDate(attempts: record.attempts, from: now), now.addingTimeInterval(rateLimitDelay))
+                    let backoff = ScrobbleRetryPolicy.shared.nextDelaySeconds(attempt: record.attempts)
+                    record.nextAttemptAt = max(now.addingTimeInterval(backoff), now.addingTimeInterval(rateLimitDelay))
+                    if !ScrobbleRetryPolicy.shared.shouldRetry(error: error, attempt: record.attempts) {
+                        record.state = .permanentlyFailed
+                    }
                 }
-                if record.attempts == 3 { onStuck?(record.title) }
+                if record.attempts >= 3 { onStuck?(record.title) }
             } catch {
                 record.attempts += 1
                 record.state = .pending
                 record.lastError = Redactor.redact(error.localizedDescription)
-                record.nextAttemptAt = retryDate(attempts: record.attempts, from: now)
-                if record.attempts == 3 { onStuck?(record.title) }
+                let backoff = ScrobbleRetryPolicy.shared.nextDelaySeconds(attempt: record.attempts)
+                record.nextAttemptAt = now.addingTimeInterval(backoff)
+                if !ScrobbleRetryPolicy.shared.shouldRetry(error: error, attempt: record.attempts) {
+                    record.state = .permanentlyFailed
+                }
+                if record.attempts >= 3 { onStuck?(record.title) }
             }
             store.save()
         }
     }
 
-    func retryDate(attempts: Int, from date: Date) -> Date {
-        let delay = min(IntegrationPolicy.scrobbleRetryMaximum, pow(2, Double(min(max(attempts, 1), 11))) * 5)
-        return date.addingTimeInterval(delay)
-    }
 }

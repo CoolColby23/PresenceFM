@@ -1,4 +1,11 @@
-# Changelog
+-# Changelog
+
+## 1.1.0 - Unreleased
+
+- Add a preview CI build workflow for preview branches and PRs.
+- Prepare packaging and verification steps for v1.1, including DMG packaging checks.
+- Bump VERSION to 1.1.0 and surface it to CI.
+- Collect UI/UX and backend improvement items for v1.1 planning.
 
 ## 1.0.0 - Unreleased
 
