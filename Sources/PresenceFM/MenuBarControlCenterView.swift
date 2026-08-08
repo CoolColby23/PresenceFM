@@ -92,7 +92,7 @@ struct MenuBarControlCenterView: View {
                         set: { model.setDiscordEnabled($0) }
                     ))
                 Spacer()
-                Text(model.discordStatus.label).font(.caption).foregroundStyle(.secondary)
+                Text(model.discordStatus.presentationLabel).font(.caption).foregroundStyle(.secondary)
                 Button("Reconnect", systemImage: "arrow.clockwise") { model.refreshDiscord() }
                     .labelStyle(.iconOnly)
                     .disabled(!preferences.discordEnabled)
@@ -115,7 +115,7 @@ struct MenuBarControlCenterView: View {
                         set: { model.setLastFMEnabled($0) }
                     ))
                 Spacer()
-                Text(model.lastFMStatus.label).font(.caption).foregroundStyle(.secondary)
+                Text(model.lastFMStatus.presentationLabel).font(.caption).foregroundStyle(.secondary)
                 Button("Open settings", systemImage: "gearshape") {
                     model.selectedSection = .settings
                     NSApp.showDashboard(using: openWindow)

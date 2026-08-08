@@ -26,7 +26,6 @@ extension View {
         } else {
             if prominent { buttonStyle(.borderedProminent) } else { buttonStyle(.bordered) }
         }
-        .buttonBorderShape(.capsule)
     }
 
     func presencePanelBackground() -> some View {
@@ -120,10 +119,7 @@ private struct PresencePanelBackground: ViewModifier {
 }
 
 private struct PresenceSidebarChrome: ViewModifier {
-    @Environment(
-        \.
-        colorScheme
-    ) private var colorScheme
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         content

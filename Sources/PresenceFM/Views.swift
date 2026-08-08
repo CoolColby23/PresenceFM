@@ -60,8 +60,7 @@ struct DashboardView: View {
 
 struct NowPlayingView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.
-        accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ScrollView {
             VStack(spacing: BrandSpacing.xxxl) {
@@ -87,7 +86,7 @@ struct NowPlayingView: View {
                         symbol: "music.note",
                         status: model.musicStatus,
                         statusLabelOverride: nil,
-                        recoveryTitle: model.musicStatus == .awaitingPermission ? "Open Settings" : nil,
+                        recoveryTitle: model.musicStatus == .awaitingPermission ? IntegrationID.appleMusic.recoveryTitle : nil,
                         recoveryAction: model.openAutomationSettings
                     )
                     Divider()
@@ -271,12 +270,12 @@ struct NowPlayingView: View {
 
     private var discordRecoveryTitle: String? {
         guard model.preferences.discordEnabled else { return nil }
-        return model.discordStatus.isConnected || model.discordStatus == .connecting ? nil : "Reconnect"
+        return model.discordStatus.isConnected || model.discordStatus == .connecting ? nil : IntegrationID.discord.recoveryTitle
     }
 
     private var lastFMRecoveryTitle: String? {
         guard model.preferences.lastFMEnabled else { return nil }
-        return model.lastFMStatus.isConnected || model.lastFMStatus == .connecting ? nil : "Review Settings"
+        return model.lastFMStatus.isConnected || model.lastFMStatus == .connecting ? nil : IntegrationID.lastFM.recoveryTitle
     }
 }
 
@@ -358,10 +357,9 @@ struct ScrobbleProgress: View {
 struct StatusCapsule: View {
     let title: String; let status: ServiceStatus
     @State private var pulse = false
-    @Environment(\.
-        accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        Label("\(title): \(status.label)", systemImage: status.isConnected ? "checkmark.circle.fill" : "circle.dashed")
+        Label("\(title): \(status.presentationLabel)", systemImage: status.isConnected ? "checkmark.circle.fill" : "circle.dashed")
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -378,6 +376,29 @@ struct StatusCapsule: View {
                 guard status.isConnected, !reduceMotion else { return }
                 pulse = true
             }
+    }
+}
+
+struct SidebarHeader: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 12) {
+            BrandMark()
+                .frame(width: 30, height: 30)
+                .padding(8)
+                .background(.ultraThinMaterial, in: .circle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("PresenceFM")
+                    .font(BrandTypography.cardTitle)
+                Text(model.isPrivate ? "Private Mode active" : "Control center")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(model.isPrivate ? "PresenceFM, Private Mode active" : "PresenceFM, Control center")
     }
 }
 
@@ -409,14 +430,20 @@ struct ServiceHealthRow: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {
                     StatusCapsule(title: title, status: status)
-                    Text(statusLabelOverride ?? status.label)
+                    Text(statusLabelOverride ?? status.presentationLabel)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    if let detail = status.detailLabel {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(title), \(statusLabelOverride ?? status.label)")
+            .accessibilityLabel("\(title), \(statusLabelOverride ?? status.presentationLabel)")
             if let recoveryTitle {
                 Button(recoveryTitle, action: recoveryAction)
                     .accessibilityHint("Attempts to recover the \(title) connection")
@@ -549,11 +576,11 @@ struct CompactStatus: View {
                 .scaleEffect(0.875)
             Text(name)
             Spacer()
-            Text(statusLabelOverride ?? status.label).foregroundStyle(.secondary)
+            Text(statusLabelOverride ?? status.presentationLabel).foregroundStyle(.secondary)
         }
             .font(.caption)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(name), \(statusLabelOverride ?? status.label)")
+            .accessibilityLabel("\(name), \(statusLabelOverride ?? status.presentationLabel)")
     }
 }
 
@@ -751,9 +778,9 @@ struct DiagnosticsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Recovery") {
-                if model.musicStatus == .awaitingPermission { Button("Open Automation Privacy Settings") { model.openAutomationSettings() } }
-                if model.preferences.discordEnabled { Button("Reconnect to Discord") { model.refreshDiscord() } }
-                if model.lastFMStatus == .authorizationExpired { Button("Reconnect Last.fm") { model.selectedSection = .settings } }
+                if model.musicStatus == .awaitingPermission { Button(IntegrationID.appleMusic.recoveryTitle ?? "Open Settings") { model.openAutomationSettings() } }
+                if model.preferences.discordEnabled, !model.discordStatus.isConnected, model.discordStatus != .connecting { Button(IntegrationID.discord.recoveryTitle ?? "Reconnect") { model.refreshDiscord() } }
+                if model.lastFMStatus == .authorizationExpired { Button(IntegrationID.lastFM.recoveryTitle ?? "Reconnect") { model.selectedSection = .settings } }
             }
             Section("Support Report") {
                 Button("Copy Redacted Support Report", systemImage: "doc.on.doc") { model.copyDiagnosticReport() }

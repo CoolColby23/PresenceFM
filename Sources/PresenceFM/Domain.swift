@@ -265,6 +265,18 @@ enum ServiceStatus: Sendable, Equatable {
         }
     }
 
+    var presentationLabel: String {
+        switch self {
+        case .failed: "Needs attention"
+        default: label
+        }
+    }
+
+    var detailLabel: String? {
+        guard case .failed(let message) = self else { return nil }
+        return message
+    }
+
     var isConnected: Bool { self == .connected }
 }
 

@@ -182,6 +182,19 @@ enum RecoveryAction: String, Codable, Sendable {
     case openAutomationSettings, reconnectDiscord, reconnectLastFM, reconnectYouTubeMusic
 }
 
+extension IntegrationID {
+    var recoveryTitle: String? {
+        switch self {
+        case .appleMusic: "Open Settings"
+        case .spotify: nil
+        case .discord: "Reconnect"
+        case .lastFM: "Reconnect"
+        case .youtubeMusic: "Reconnect"
+        case .tidal: nil
+        }
+    }
+}
+
 struct IntegrationHealth: Sendable, Identifiable {
     let integration: IntegrationID
     let state: IntegrationState

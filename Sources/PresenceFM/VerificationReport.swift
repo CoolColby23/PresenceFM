@@ -47,6 +47,10 @@ struct VerificationReport: Codable, Equatable {
     }
 }
 
+extension ServiceStatus {
+    var verificationLabel: String { presentationLabel }
+}
+
 struct ArtworkCacheMetrics: Sendable, Equatable {
     let memoryEntries: Int
     let diskEntries: Int

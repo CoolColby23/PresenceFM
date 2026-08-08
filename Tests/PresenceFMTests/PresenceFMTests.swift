@@ -1344,6 +1344,18 @@ struct BackupAndExtendedInsightsTests {
     }
 }
 
+@Suite("Service status copy")
+struct ServiceStatusCopyTests {
+    @Test func failedStatusUsesConsistentPresentationCopy() {
+        let status = ServiceStatus.failed("Permission denied")
+        #expect(status.presentationLabel == "Needs attention")
+        #expect(status.detailLabel == "Permission denied")
+        #expect(IntegrationID.appleMusic.recoveryTitle == "Open Settings")
+        #expect(IntegrationID.discord.recoveryTitle == "Reconnect")
+        #expect(IntegrationID.lastFM.recoveryTitle == "Reconnect")
+    }
+}
+
 @Suite("Persistence recovery")
 struct PersistenceRecoveryTests {
     @MainActor

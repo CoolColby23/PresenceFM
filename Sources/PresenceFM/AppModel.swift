@@ -781,7 +781,7 @@ final class AppModel {
             default: nil
             }
         return IntegrationHealth(
-            integration: id, state: status.integrationState, summary: status.label,
+            integration: id, state: status.integrationState, summary: status.presentationLabel,
             lastSuccessfulAt: store.lastSuccessfulIntegrationDate(id), recoveryAction: action
         )
     }

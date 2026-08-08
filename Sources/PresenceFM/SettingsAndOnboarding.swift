@@ -167,7 +167,11 @@ struct OnboardingView: View {
             HStack(spacing: 8) {
                 ForEach(steps.indices, id: \.self) { index in
                     Capsule()
-                        .fill(index <= step ? BrandColors.accentRibbon : BrandColors.steel.opacity(0.20))
+                        .fill(
+                            index <= step
+                                ? AnyShapeStyle(BrandColors.accentRibbon)
+                                : AnyShapeStyle(BrandColors.steel.opacity(0.20))
+                        )
                         .frame(height: 8)
                         .accessibilityHidden(true)
                 }
