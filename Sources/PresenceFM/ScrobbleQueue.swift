@@ -27,6 +27,11 @@ final class ScrobbleQueue {
         case .warning(let message), .rejected(let message): onCapacity?(message)
         case .duplicate: break
         }
+
+        func retryDate(attempts: Int, from date: Date) -> Date {
+            let delay = min(IntegrationPolicy.scrobbleRetryMaximum, pow(2, Double(min(max(attempts, 1), 11))) * 5)
+            return date.addingTimeInterval(delay)
+        }
     }
 
     func start() {
