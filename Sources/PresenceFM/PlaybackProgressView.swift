@@ -20,11 +20,12 @@ struct PlaybackProgress: View {
 private struct PlaybackProgressContent: View {
     let position: TimeInterval
     let duration: TimeInterval
+    @Environment(\.appTheme) private var theme
 
     var body: some View {
         VStack(spacing: 6) {
             ProgressView(value: min(max(position, 0), duration), total: max(duration, 1))
-                .tint(BrandColors.accentRibbon)
+                .tint(theme.accentGradient)
                 .accessibilityLabel("Playback progress")
                 .accessibilityValue(
                     PlaybackProgressPresentation.accessibilityValue(

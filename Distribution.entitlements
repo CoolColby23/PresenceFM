@@ -4,5 +4,7 @@
 <dict>
 	<key>com.apple.security.automation.apple-events</key>
 	<true/>
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)fm.presence.PresenceFM</string>
 </dict>
 </plist>

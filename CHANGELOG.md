@@ -1,7 +1,13 @@
--# Changelog
+# Changelog
 
 ## 1.1.0 - Unreleased
 
+- Improve Discord Rich Presence cover art: proxy external artwork through a stable image CDN, broaden Apple catalog matching, and upgrade insecure/HTTP artwork URLs.
+- Host updated platform badges (including the current Apple Music mark) on the project site for reliable Discord small-image loading.
+- Refresh the marketing website for v1.1 with production vs pre-release download channels.
+- Ship distinct GitHub release channels: production tags (`v1.1.0`) publish Latest + Sparkle appcast; pre-release tags (`v1.1.0-beta.N`, `v1.1.0-rc.N`) mark Pre-release without touching the production feed.
+- Fix preview CI to package a real DMG artifact instead of noisy draft releases per commit.
+- Polish menu bar control center, themes, listening history tools, and status presentation.
 - Add a preview CI build workflow for preview branches and PRs.
 - Prepare packaging and verification steps for v1.1, including DMG packaging checks.
 - Bump VERSION to 1.1.0 and surface it to CI.

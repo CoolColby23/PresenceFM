@@ -19,15 +19,20 @@ actor DiscordPresenceClient: PresencePublishing {
     private var lastPresence: DiscordPresence?
     private var lastPublishAt: Date?
     private(set) var socketPath: String?
+    private let runtimeRoots: [String]?
 
-    init(applicationID: String = ReleaseConfiguration.discordApplicationID) {
+    init(
+        applicationID: String = ReleaseConfiguration.discordApplicationID,
+        runtimeRoots: [String]? = nil
+    ) {
         self.applicationID = applicationID.isEmpty ? ReleaseConfiguration.discordApplicationID : applicationID
+        self.runtimeRoots = runtimeRoots
     }
     deinit { if socketFD >= 0 { Darwin.close(socketFD) } }
 
     func publish(_ presence: DiscordPresence) async throws {
-        if presence == lastPresence, let lastPublishAt, Date().timeIntervalSince(lastPublishAt) < 15 { return }
         try await connectIfNeeded()
+        if presence == lastPresence, let lastPublishAt, Date().timeIntervalSince(lastPublishAt) < 15 { return }
         let activity = Self.activityPayload(for: presence)
         try send(opcode: 1, payload: [
             "cmd": "SET_ACTIVITY", "args": ["pid": ProcessInfo.processInfo.processIdentifier, "activity": activity],
@@ -39,9 +44,15 @@ actor DiscordPresenceClient: PresencePublishing {
 
     nonisolated static func activityPayload(for presence: DiscordPresence) -> [String: Any] {
         let largeImage = switch presence.largeImage {
-        case .artwork: presence.artworkURL?.absoluteString ?? ReleaseConfiguration.discordApplicationIconURL
-        case .playbackPlatform: presence.platform.discordSmallImageURL
-        case .presenceFM: ReleaseConfiguration.discordApplicationIconURL
+        case .artwork:
+            DiscordMediaURL.externalImage(
+                presence.artworkURL,
+                fallback: ReleaseConfiguration.discordApplicationIconURL
+            )
+        case .playbackPlatform:
+            presence.platform.discordSmallImageURL
+        case .presenceFM:
+            ReleaseConfiguration.discordApplicationIconURL
         }
         let details = bounded(presence.title, fallback: "Listening on \(presence.platform.rawValue)")
         let state = bounded(presence.state, fallback: presence.platform.rawValue)
@@ -112,7 +123,23 @@ actor DiscordPresenceClient: PresencePublishing {
         disconnect()
     }
 
+    /// A socket file can survive after Discord exits. Only report availability
+    /// after a fresh IPC connection succeeds.
+    func probeAvailability() async -> Bool {
+        disconnect()
+        do {
+            try await connectIfNeeded()
+            return true
+        } catch {
+            disconnect()
+            return false
+        }
+    }
+
     private func connectIfNeeded() async throws {
+        if socketFD >= 0, !isSocketLive {
+            disconnect()
+        }
         guard socketFD < 0 else { return }
         guard !applicationID.isEmpty else {
             throw DiscordError.missingApplicationID
@@ -122,6 +149,11 @@ actor DiscordPresenceClient: PresencePublishing {
         }
         let fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw DiscordError.connectFailed }
+        var noSignal: Int32 = 1
+        _ = Darwin.setsockopt(
+            fd, SOL_SOCKET, SO_NOSIGPIPE,
+            &noSignal, socklen_t(MemoryLayout<Int32>.size)
+        )
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
         let pathCapacity = MemoryLayout.size(ofValue: address.sun_path)
@@ -134,11 +166,24 @@ actor DiscordPresenceClient: PresencePublishing {
                 Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
-        guard result == 0 else { Darwin.close(fd); throw DiscordError.connectFailed }
+        // A leftover filesystem entry is not proof that Discord is running.
+        guard result == 0 else { Darwin.close(fd); throw DiscordError.unavailable }
         socketFD = fd
         socketPath = path
         do { try send(opcode: 0, payload: ["v": 1, "client_id": applicationID]) }
         catch { disconnect(); throw error }
+    }
+
+    private var isSocketLive: Bool {
+        guard socketFD >= 0 else { return false }
+        var descriptor = pollfd(
+            fd: socketFD,
+            events: Int16(POLLHUP | POLLERR | POLLNVAL),
+            revents: 0
+        )
+        let result = Darwin.poll(&descriptor, 1, 0)
+        guard result >= 0 else { return false }
+        return result == 0 || descriptor.revents & Int16(POLLHUP | POLLERR | POLLNVAL) == 0
     }
 
     private func send(opcode: UInt32, payload: [String: Any]) throws {
@@ -158,8 +203,13 @@ actor DiscordPresenceClient: PresencePublishing {
     }
 
     private func candidatePaths() -> [String] {
-        let environment = ProcessInfo.processInfo.environment
-        let roots = [environment["XDG_RUNTIME_DIR"], environment["TMPDIR"], environment["TMP"], environment["TEMP"], "/tmp"].compactMap { $0 }
+        let roots: [String]
+        if let runtimeRoots {
+            roots = runtimeRoots
+        } else {
+            let environment = ProcessInfo.processInfo.environment
+            roots = [environment["XDG_RUNTIME_DIR"], environment["TMPDIR"], environment["TMP"], environment["TEMP"], "/tmp"].compactMap { $0 }
+        }
         return roots.flatMap { root in (0...9).map { URL(fileURLWithPath: root).appendingPathComponent("discord-ipc-\($0)").path } }
     }
 }

@@ -15,51 +15,68 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.0"
-      - name: Verify release tag
+
+      - name: Parse release tag
+        id: meta
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${GITHUB_REF_NAME}"
+          RAW="${TAG#v}"
+          # Strip pre-release suffix for VERSION file comparison (1.1.0-beta.1 -> 1.1.0)
+          BASE="${RAW%%-*}"
           SOURCE_VERSION="$(<VERSION)"
-          if [[ "$TAG_VERSION" != "$SOURCE_VERSION" ]]; then
-            echo "Tag version $TAG_VERSION does not match VERSION $SOURCE_VERSION" >&2
+          if [[ "$BASE" != "$SOURCE_VERSION" ]]; then
+            echo "Tag base version $BASE does not match VERSION $SOURCE_VERSION" >&2
             exit 1
           fi
+          IS_PRERELEASE=false
+          if [[ "$RAW" == *-* ]]; then
+            IS_PRERELEASE=true
+          fi
+          {
+            echo "version=$RAW"
+            echo "base_version=$BASE"
+            echo "is_prerelease=$IS_PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Test
         run: swift test
+
       - name: Verify website
         run: ./scripts/verify-website.sh
+
       - name: Package app
         env:
-          PRESENCEFM_VERSION: ${{ github.ref_name }}
+          PRESENCEFM_VERSION: ${{ steps.meta.outputs.version }}
           PRESENCEFM_BUILD_NUMBER: ${{ github.run_number }}
           PRESENCEFM_SIGNING_IDENTITY: "-"
-        run: |
-          PRESENCEFM_VERSION="${PRESENCEFM_VERSION#v}" ./scripts/package-app.sh
+        run: ./scripts/package-app.sh
+
       - name: Verify app bundle
         env:
-          PRESENCEFM_VERSION: ${{ github.ref_name }}
+          PRESENCEFM_VERSION: ${{ steps.meta.outputs.version }}
           PRESENCEFM_BUILD_NUMBER: ${{ github.run_number }}
-        run: |
-          PRESENCEFM_VERSION="${PRESENCEFM_VERSION#v}" ./scripts/verify-package.sh
+        run: ./scripts/verify-package.sh
+
       - name: Create DMG
         env:
-          PRESENCEFM_VERSION: ${{ github.ref_name }}
-        run: |
-          PRESENCEFM_VERSION="${PRESENCEFM_VERSION#v}"
-          ./scripts/create-dmg.sh "${PRESENCEFM_VERSION}"
+          PRESENCEFM_VERSION: ${{ steps.meta.outputs.version }}
+        run: ./scripts/create-dmg.sh "${PRESENCEFM_VERSION}"
+
       - name: Create checksum
         env:
-          PRESENCEFM_VERSION: ${{ github.ref_name }}
+          PRESENCEFM_VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          PRESENCEFM_VERSION="${PRESENCEFM_VERSION#v}"
           shasum -a 256 "PresenceFM-${PRESENCEFM_VERSION}.dmg" > "PresenceFM-${PRESENCEFM_VERSION}.sha256"
           hdiutil verify "PresenceFM-${PRESENCEFM_VERSION}.dmg"
           shasum -a 256 -c "PresenceFM-${PRESENCEFM_VERSION}.sha256"
+
       - name: Generate signed update feed
+        if: steps.meta.outputs.is_prerelease != 'true'
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           test -n "$SPARKLE_PRIVATE_KEY"
-          APPCAST_TOOL="$(find .build/artifacts -type f -name generate_appcast -perm +111 -print -quit)"
+          APPCAST_TOOL="$(find .build/checkouts -type f -name generate_appcast -perm +111 -print -quit)"
           test -x "$APPCAST_TOOL"
           mkdir appcast
           cp PresenceFM-*.dmg appcast/
@@ -71,10 +88,40 @@ jobs:
             -o appcast/appcast.xml \
             appcast
           cp appcast/appcast.xml ./appcast.xml
+
+      - name: Prepare release notes
+        env:
+          IS_PRERELEASE: ${{ steps.meta.outputs.is_prerelease }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            printf '%s\n' \
+              "## PresenceFM ${VERSION} (pre-release)" \
+              "" \
+              "This is a **pre-release** build for testing. It is not marked as Latest and does not update the production Sparkle appcast." \
+              "" \
+              "- Requires macOS 15 or later" \
+              "- Ad-hoc signed: first launch may need Control-click → Open" \
+              "- Report issues on GitHub" \
+              > release-body.md
+          else
+            printf '%s\n' \
+              "## PresenceFM ${VERSION}" \
+              "" \
+              "Production release. In-app updates use the signed \`appcast.xml\` attached to this release." \
+              "" \
+              "- Requires macOS 15 or later" \
+              "- Ad-hoc signed: first launch may need Control-click → Open" \
+              > release-body.md
+          fi
+
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
+          prerelease: ${{ steps.meta.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
+          body_path: release-body.md
+          fail_on_unmatched_files: false
           files: |
             PresenceFM-*.dmg
             PresenceFM-*.sha256

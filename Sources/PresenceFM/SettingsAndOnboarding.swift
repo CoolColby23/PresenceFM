@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.appTheme) private var theme
     @State private var step = 0
     @State private var discordEnabled = false
     @State private var lastFMEnabled = false
@@ -169,7 +170,7 @@ struct OnboardingView: View {
                     Capsule()
                         .fill(
                             index <= step
-                                ? AnyShapeStyle(BrandColors.accentRibbon)
+                                ? AnyShapeStyle(theme.accentGradient)
                                 : AnyShapeStyle(BrandColors.steel.opacity(0.20))
                         )
                         .frame(height: 8)
@@ -216,19 +217,20 @@ struct IntroStep: View {
     let symbol: String
     let text: String
     var branded = false
+    @Environment(\.appTheme) private var theme
 
     var body: some View {
         VStack(spacing: 20) {
             ZStack {
                 Circle()
-                    .fill(BrandColors.accentRibbon.opacity(0.14))
+                    .fill(theme.accentGradient.opacity(0.14))
                     .frame(width: 92, height: 92)
                 if branded {
                     BrandMark().frame(width: 62, height: 62)
                 } else {
                     Image(systemName: symbol)
                         .font(.system(size: 38, weight: .semibold, design: .rounded))
-                        .foregroundStyle(BrandColors.electricBlue)
+                        .foregroundStyle(theme.primaryColor)
                 }
             }
             Text(title).font(BrandTypography.heroTitle)

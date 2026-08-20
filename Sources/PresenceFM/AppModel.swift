@@ -3,6 +3,7 @@ import Foundation
 import Observation
 import ServiceManagement
 import SwiftData
+import SwiftUI
 import UserNotifications
 
 @MainActor @Observable
@@ -33,13 +34,20 @@ final class AppModel {
     var verificationExportStatus = ""
     var onboardingPresented: Bool
     var selectedSection: DashboardSection = .nowPlaying
+    var commandPalettePresented = false
+    var selectedSettingsCategory: SettingsCategory = .general
     var credentialDraft = CredentialDraft()
     var lastFMUsername = ""
     var hasStoredLastFMCredentials = false
     var artworkData: Data?
     var artworkImage: NSImage?
+    var artworkLoadState: ArtworkLoadState = .idle
     var discordArtworkURL: URL?
     var demoModeEnabled = false
+    var lastFMRemoteTracks: [LastFMRemoteTrack] = []
+    var lastFMRemoteTracksUpdatedAt: Date?
+    var lastFMRemoteTracksError: String?
+    var lastFMRemoteTracksLoading = false
     let preferences: Preferences
 
     @ObservationIgnored let store: PersistenceStore
@@ -75,7 +83,7 @@ final class AppModel {
         self.clock = clock
         demoModeEnabled = launchInDemoMode
         onboardingPresented = launchInDemoMode ? false : !preferences.onboardingComplete
-        discordStatus = preferences.discordEnabled ? .connecting : .disabled
+        discordStatus = preferences.discordEnabled ? .inactive : .disabled
         lastFMStatus = preferences.lastFMEnabled ? .connecting : .disabled
         schedulePrivacyExpiration()
         sectionObserver = NotificationCenter.default.addObserver(
@@ -153,7 +161,10 @@ final class AppModel {
                 if changedTrack {
                     artworkTask?.cancel()
                     setArtworkData(nil)
-                    discordArtworkURL = nil
+                    artworkLoadState = value.track == nil
+                        ? .idle
+                        : (demoModeEnabled ? .available(.generatedPlaceholder) : .loading)
+                    discordArtworkURL = ArtworkService.directPublicArtworkURL(for: value.track)
                 }
                 let nextMusicStatus = aggregatePlaybackStatus(for: value)
                 if musicStatus != nextMusicStatus { musicStatus = nextMusicStatus }
@@ -186,6 +197,42 @@ final class AppModel {
             }
             await discord.clear(); await monitor.stop()
         }
+    }
+
+    var canControlPlayback: Bool {
+        !demoModeEnabled && SystemPlaybackController.supports(snapshot.track?.platform)
+    }
+
+    func performPlaybackControl(_ command: PlaybackControlCommand) {
+        guard canControlPlayback, let platform = snapshot.track?.platform else { return }
+        Task.detached(priority: .userInitiated) {
+            SystemPlaybackController.perform(command, platform: platform)
+        }
+    }
+
+    func seekPlayback(to position: TimeInterval) {
+        guard let platform = snapshot.track?.platform, canControlPlayback else { return }
+        Task.detached { _ = SystemPlaybackController.seek(to: position, platform: platform) }
+    }
+
+    func adjustPlaybackVolume(by amount: Int) {
+        guard let platform = snapshot.track?.platform, canControlPlayback else { return }
+        Task.detached { _ = SystemPlaybackController.adjustVolume(by: amount, platform: platform) }
+    }
+
+    func retryCurrentArtwork() {
+        guard let track = snapshot.track else { return }
+        artworkTask?.cancel()
+        artworkTask = Task { [weak self] in
+            guard let self else { return }
+            self.artworkLoadState = .loading
+            await self.artwork.invalidateArtwork(for: track.identity)
+            await self.updateArtwork(for: track)
+        }
+    }
+
+    func artworkCacheMetrics() async -> ArtworkCacheMetrics {
+        await artwork.cacheMetrics
     }
 
     func setPrivate(until: Date?) {
@@ -232,6 +279,7 @@ final class AppModel {
             lastFMStatus = .connected
             queue.start()
             await queue.process()
+            await refreshLastFMRemoteHistory()
         } catch { updateLastFMStatus(for: error) }
     }
 
@@ -242,7 +290,40 @@ final class AppModel {
         lastFMUsername = ""
         preferences.lastFMEnabled = false
         lastFMStatus = .disabled
+        lastFMRemoteTracks = []
+        lastFMRemoteTracksUpdatedAt = nil
+        lastFMRemoteTracksError = nil
         store.log("lastfm", "Account disconnected")
+    }
+
+    /// Loads recent scrobbles from the connected Last.fm account so Listening History
+    /// can show listens recorded on phones and other devices.
+    func refreshLastFMRemoteHistory(force: Bool = false) async {
+        guard preferences.lastFMEnabled, !lastFMUsername.isEmpty else {
+            lastFMRemoteTracks = []
+            lastFMRemoteTracksError = nil
+            lastFMRemoteTracksLoading = false
+            return
+        }
+        if lastFMRemoteTracksLoading { return }
+        if !force,
+           let updatedAt = lastFMRemoteTracksUpdatedAt,
+           clock.now.timeIntervalSince(updatedAt) < 45
+        {
+            return
+        }
+        lastFMRemoteTracksLoading = true
+        defer { lastFMRemoteTracksLoading = false }
+        do {
+            let tracks = try await lastFM.recentTracks(limit: 80)
+            lastFMRemoteTracks = tracks
+            lastFMRemoteTracksUpdatedAt = clock.now
+            lastFMRemoteTracksError = nil
+            if lastFMStatus != .connected { lastFMStatus = .connected }
+        } catch {
+            lastFMRemoteTracksError = error.localizedDescription
+            updateLastFMStatus(for: error)
+        }
     }
 
     func connectYTMDesktop() async {
@@ -287,7 +368,11 @@ final class AppModel {
         let storedSecret = await credentials.value(for: .lastFMSecret)
         hasStoredLastFMCredentials = !credentialDraft.lastFMAPIKey.isEmpty && storedSecret?.isEmpty == false
         lastFMUsername = await credentials.value(for: .lastFMUsername) ?? ""
-        discordStatus = (credentialDraft.discordApplicationID.isEmpty && !ReleaseConfiguration.hasDiscordConfiguration) ? .disabled : .connecting
+        if !preferences.discordEnabled || (credentialDraft.discordApplicationID.isEmpty && !ReleaseConfiguration.hasDiscordConfiguration) {
+            discordStatus = .disabled
+        } else {
+            discordStatus = await discord.probeAvailability() ? .inactive : .offline
+        }
         lastFMStatus = preferences.lastFMEnabled ? (lastFMUsername.isEmpty ? .authorizationExpired : .connected) : .disabled
         ytmDesktopStatus = await credentials.value(for: .ytmDesktopToken) == nil ? .disabled : .connected
     }
@@ -348,7 +433,7 @@ final class AppModel {
             snapshot.confidence != .low, let session = activeSession
         else {
             await discord.clear()
-            setDiscordStatus(preferences.discordEnabled ? .connecting : .disabled)
+            await refreshDiscordIdleStatus()
             return
         }
         let presence = DiscordPresenceFactory.make(
@@ -356,13 +441,24 @@ final class AppModel {
             artworkURL: discordArtworkURL, now: clock.now
         )
         do { try await discord.publish(presence); setDiscordStatus(.connected) } catch let error as DiscordError {
-            setDiscordStatus(error == .unavailable ? .offline : .failed(error.localizedDescription))
+            switch error {
+            case .unavailable, .writeFailed: setDiscordStatus(.offline)
+            default: setDiscordStatus(.failed(error.localizedDescription))
+            }
         } catch { setDiscordStatus(.failed(error.localizedDescription)) }
     }
 
     private func setDiscordStatus(_ status: ServiceStatus) {
         guard discordStatus != status else { return }
         discordStatus = status
+    }
+
+    private func refreshDiscordIdleStatus() async {
+        guard preferences.discordEnabled else {
+            setDiscordStatus(.disabled)
+            return
+        }
+        setDiscordStatus(await discord.probeAvailability() ? .inactive : .offline)
     }
 
     func retryScrobble(id: UUID) { notifications.reset("queue-stuck"); queue.retry(id: id) }
@@ -374,10 +470,20 @@ final class AppModel {
     func clearListeningHistory() { store.clearActivity() }
     func applyHistoryRetention() { store.applyHistoryRetention(days: preferences.historyRetentionDays) }
 
+    func openSettings(_ category: SettingsCategory) {
+        selectedSettingsCategory = category
+        navigate(to: .settings)
+    }
+
+    func navigate(to section: DashboardSection) {
+        preferences.showDashboardSection(section)
+        selectedSection = section
+    }
+
     func setDiscordEnabled(_ enabled: Bool) {
         preferences.discordEnabled = enabled
         Task { enabled ? await updateDiscord() : await discord.clear() }
-        discordStatus = enabled ? .connecting : .disabled
+        discordStatus = enabled ? .inactive : .disabled
     }
 
     func setLastFMEnabled(_ enabled: Bool) {
@@ -389,6 +495,19 @@ final class AppModel {
         Task {
             await discord.disconnect(); await updateDiscord()
         }
+    }
+
+    func recoverDiscord() {
+        if discordStatus == .offline {
+            let bundleIDs = ["com.hnc.Discord", "com.hnc.DiscordPTB", "com.hnc.DiscordCanary"]
+            if let url = bundleIDs.compactMap({ NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }).first {
+                NSWorkspace.shared.openApplication(at: url, configuration: .init()) { [weak self] _, _ in
+                    Task { @MainActor in self?.refreshDiscord() }
+                }
+                return
+            }
+        }
+        refreshDiscord()
     }
 
     func refreshPresenceOptions() {
@@ -621,13 +740,15 @@ final class AppModel {
 
     private func updateArtwork(for track: TrackMetadata?) async {
         guard let track else {
-            artworkTask?.cancel(); setArtworkData(nil); discordArtworkURL = nil
+            artworkTask?.cancel(); setArtworkData(nil); artworkLoadState = .idle; discordArtworkURL = nil
             return
         }
         let identity = track.identity
-        let data = await artwork.artwork(for: track)
+        let result = await artwork.artworkResult(for: track)
+        let data = result?.data
         guard snapshot.track?.identity == identity else { return }
         setArtworkData(data)
+        artworkLoadState = result.map { .available($0.source) } ?? .loading
         if let data {
             store.backfillArtwork(for: identity.persistentID, artworkData: data)
         }
@@ -643,7 +764,12 @@ final class AppModel {
             guard !Task.isCancelled, self.snapshot.track?.identity == identity else { return }
             if let downloadedData {
                 self.setArtworkData(downloadedData)
+                self.artworkLoadState = .available(
+                    ArtworkService.directPublicArtworkURL(for: track) == publicURL ? .playerURL : .appleCatalog
+                )
                 self.store.backfillArtwork(for: identity.persistentID, artworkData: downloadedData)
+            } else if data == nil {
+                self.artworkLoadState = .unavailable
             }
             self.discordArtworkURL = publicURL
             await self.updateDiscord()
@@ -796,6 +922,15 @@ struct CredentialDraft { var discordApplicationID = ""; var lastFMAPIKey = ""; v
 enum DashboardSection: String, CaseIterable, Identifiable {
     case nowPlaying = "Now Playing", history = "Listening History", queue = "Queue", diagnostics = "Diagnostics", settings = "Settings"
     var id: Self { self }
+    var title: String {
+        switch self {
+        case .nowPlaying: "Now Playing"
+        case .history: "History"
+        case .queue: "Pending Plays"
+        case .diagnostics: "Status & Support"
+        case .settings: "Settings"
+        }
+    }
     var symbol: String {
         switch self {
         case .nowPlaying: "music.note";
@@ -805,12 +940,16 @@ enum DashboardSection: String, CaseIterable, Identifiable {
         case .settings: "gear"
         }
     }
+
+    var canBeHidden: Bool { self != .nowPlaying && self != .settings }
 }
 
 @MainActor @Observable
 final class Preferences {
-    static let shared = Preferences()
+    static let shared = Preferences(cloudStore: .default)
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let cloudStore: NSUbiquitousKeyValueStore?
+    @ObservationIgnored private var themeCloudObserver: NSObjectProtocol?
     var onboardingComplete: Bool { didSet { defaults.set(onboardingComplete, forKey: "onboardingComplete") } }
     var discordEnabled: Bool { didSet { defaults.set(discordEnabled, forKey: "discordEnabled") } }
     var lastFMEnabled: Bool { didSet { defaults.set(lastFMEnabled, forKey: "lastFMEnabled") } }
@@ -863,6 +1002,39 @@ final class Preferences {
     var selectedDiscordProfileID: UUID? {
         didSet { defaults.set(selectedDiscordProfileID?.uuidString, forKey: "selectedDiscordProfileID") }
     }
+    var appearanceMode: AppearanceMode {
+        didSet {
+            defaults.set(appearanceMode.rawValue, forKey: Self.appearanceModeKey)
+            cloudStore?.set(appearanceMode.rawValue, forKey: Self.appearanceModeKey)
+        }
+    }
+    var lightThemeID: String {
+        didSet {
+            let validID = AppTheme.validatedID(lightThemeID)
+            if lightThemeID != validID { lightThemeID = validID; return }
+            defaults.set(lightThemeID, forKey: Self.lightThemeKey)
+            cloudStore?.set(lightThemeID, forKey: Self.lightThemeKey)
+        }
+    }
+    var darkThemeID: String {
+        didSet {
+            let validID = AppTheme.validatedID(darkThemeID)
+            if darkThemeID != validID { darkThemeID = validID; return }
+            defaults.set(darkThemeID, forKey: Self.darkThemeKey)
+            cloudStore?.set(darkThemeID, forKey: Self.darkThemeKey)
+        }
+    }
+    var menuBarExpanded: Bool { didSet { defaults.set(menuBarExpanded, forKey: "menuBarExpanded") } }
+    var hiddenDashboardSections: Set<DashboardSection> {
+        didSet {
+            let allowed = hiddenDashboardSections.filter(\.canBeHidden)
+            if hiddenDashboardSections != Set(allowed) {
+                hiddenDashboardSections = Set(allowed)
+                return
+            }
+            defaults.set(hiddenDashboardSections.map(\.rawValue).sorted(), forKey: "hiddenDashboardSections")
+        }
+    }
     var excludedScrobbleArtists: String {
         didSet { defaults.set(excludedScrobbleArtists, forKey: "excludedScrobbleArtists") }
     }
@@ -878,8 +1050,32 @@ final class Preferences {
         }
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, cloudStore: NSUbiquitousKeyValueStore? = nil) {
         self.defaults = defaults
+        self.cloudStore = cloudStore
+        cloudStore?.synchronize()
+        let legacyThemeID = defaults.string(forKey: "selectedThemeID")
+        appearanceMode = AppearanceMode(
+            rawValue: cloudStore?.string(forKey: Self.appearanceModeKey)
+                ?? defaults.string(forKey: Self.appearanceModeKey)
+                ?? ""
+        ) ?? .system
+        lightThemeID = AppTheme.validatedID(
+            cloudStore?.string(forKey: Self.lightThemeKey)
+                ?? defaults.string(forKey: Self.lightThemeKey)
+                ?? legacyThemeID
+        )
+        darkThemeID = AppTheme.validatedID(
+            cloudStore?.string(forKey: Self.darkThemeKey)
+                ?? defaults.string(forKey: Self.darkThemeKey)
+                ?? legacyThemeID
+        )
+        menuBarExpanded = defaults.object(forKey: "menuBarExpanded") as? Bool ?? true
+        hiddenDashboardSections = Set(
+            defaults.stringArray(forKey: "hiddenDashboardSections")?
+                .compactMap(DashboardSection.init(rawValue:))
+                .filter(\.canBeHidden) ?? []
+        )
         onboardingComplete = defaults.bool(forKey: "onboardingComplete")
         discordEnabled = defaults.bool(forKey: "discordEnabled")
         lastFMEnabled = defaults.bool(forKey: "lastFMEnabled")
@@ -926,7 +1122,65 @@ final class Preferences {
         excludedScrobblePlatforms = Set(
             defaults.stringArray(forKey: "excludedScrobblePlatforms")?.compactMap(PlaybackPlatform.init(rawValue:)) ?? []
         )
+        if let cloudStore {
+            themeCloudObserver = NotificationCenter.default.addObserver(
+                forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: cloudStore,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.applyCloudThemeSelection() }
+            }
+            // Seed missing cloud values from this device without replacing values
+            // that have already synced from another PresenceFM installation.
+            if cloudStore.string(forKey: Self.appearanceModeKey) == nil {
+                cloudStore.set(appearanceMode.rawValue, forKey: Self.appearanceModeKey)
+            }
+            if cloudStore.string(forKey: Self.lightThemeKey) == nil {
+                cloudStore.set(lightThemeID, forKey: Self.lightThemeKey)
+            }
+            if cloudStore.string(forKey: Self.darkThemeKey) == nil {
+                cloudStore.set(darkThemeID, forKey: Self.darkThemeKey)
+            }
+            cloudStore.synchronize()
+        }
     }
+
+    func theme(for colorScheme: ColorScheme) -> AppTheme {
+        AppTheme.find(colorScheme == .dark ? darkThemeID : lightThemeID)
+    }
+
+    func isDashboardSectionVisible(_ section: DashboardSection) -> Bool {
+        !hiddenDashboardSections.contains(section)
+    }
+
+    func toggleDashboardSection(_ section: DashboardSection) {
+        guard section.canBeHidden else { return }
+        if hiddenDashboardSections.contains(section) {
+            hiddenDashboardSections.remove(section)
+        } else {
+            hiddenDashboardSections.insert(section)
+        }
+    }
+
+    func showDashboardSection(_ section: DashboardSection) {
+        hiddenDashboardSections.remove(section)
+    }
+
+    private func applyCloudThemeSelection() {
+        guard let cloudStore else { return }
+        if let rawMode = cloudStore.string(forKey: Self.appearanceModeKey),
+           let mode = AppearanceMode(rawValue: rawMode), mode != appearanceMode {
+            appearanceMode = mode
+        }
+        let lightID = AppTheme.validatedID(cloudStore.string(forKey: Self.lightThemeKey))
+        if lightID != lightThemeID { lightThemeID = lightID }
+        let darkID = AppTheme.validatedID(cloudStore.string(forKey: Self.darkThemeKey))
+        if darkID != darkThemeID { darkThemeID = darkID }
+    }
+
+    private static let appearanceModeKey = "appearanceMode.v1"
+    private static let lightThemeKey = "lightThemeID.v1"
+    private static let darkThemeKey = "darkThemeID.v1"
 }
 
 enum DiscordLineFormat: String, CaseIterable, Identifiable {

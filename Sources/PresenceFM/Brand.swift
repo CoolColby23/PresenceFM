@@ -76,6 +76,7 @@ enum BrandTypography {
 struct BrandMark: View {
     var monochrome = false
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appTheme) private var theme
 
     var body: some View {
         Canvas { context, size in
@@ -84,7 +85,7 @@ struct BrandMark: View {
             let ink: GraphicsContext.Shading = monochrome
                 ? .color(.primary)
                 : .linearGradient(
-                    Gradient(colors: [BrandColors.cyan, BrandColors.electricBlue]),
+                    Gradient(colors: [theme.secondaryColor, theme.primaryColor]),
                     startPoint: CGPoint(x: 0, y: 0),
                     endPoint: CGPoint(x: size.width, y: size.height)
                 )

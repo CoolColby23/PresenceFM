@@ -11,82 +11,102 @@ struct DiscordSettingsSection: View {
             Toggle("Enable Discord Rich Presence", isOn: $preferences.discordEnabled)
                 .accessibilityIdentifier("discord.enabled")
                 .onChange(of: preferences.discordEnabled) { _, value in model.setDiscordEnabled(value) }
-            profileControls
-            Picker("Activity style", selection: $preferences.discordActivityType) {
+            LabeledContent("Status", value: model.discordStatus.presentationLabel)
+                .foregroundStyle(model.discordStatus.isConnected ? BrandColors.success : .secondary)
+            Text(discordStatusExplanation)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            DisclosureGroup("Customize Rich Presence") {
+                profileControls
+                Picker("Activity style", selection: $preferences.discordActivityType) {
                 ForEach(DiscordActivityType.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .accessibilityIdentifier("discord.activity-style")
-            .onChange(of: preferences.discordActivityType) { _, _ in refresh() }
-            TextField("Activity name", text: $preferences.discordActivityName, prompt: Text("PresenceFM"))
-                .accessibilityIdentifier("discord.activity-name")
-                .onSubmit { refresh() }
-            Text("This is the text after “\(preferences.discordActivityType.rawValue)” in Discord. Templates are supported.")
-                .font(.caption).foregroundStyle(.secondary)
-            Picker("First line", selection: $preferences.discordLineOne) {
-                ForEach(DiscordLineFormat.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .accessibilityIdentifier("discord.first-line")
-            .onChange(of: preferences.discordLineOne) { _, _ in refresh() }
-            if preferences.discordLineOne == .custom {
-                TextField("First line template", text: $preferences.discordCustomLineOne).onSubmit { refresh() }
-            }
-            Picker("Second line", selection: $preferences.discordLineTwo) {
-                ForEach(DiscordLineFormat.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .accessibilityIdentifier("discord.second-line")
-            .onChange(of: preferences.discordLineTwo) { _, _ in refresh() }
-            if preferences.discordLineTwo == .custom {
-                TextField("Second line template", text: $preferences.discordCustomLineTwo).onSubmit { refresh() }
-            }
-            Toggle("Include album in formatted lines", isOn: $preferences.showAlbum)
-                .onChange(of: preferences.showAlbum) { _, _ in refresh() }
-            Picker("Timer", selection: $preferences.discordTimerStyle) {
-                ForEach(DiscordTimerStyle.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .accessibilityIdentifier("discord.timer")
-            .onChange(of: preferences.discordTimerStyle) { _, _ in refresh() }
-            Toggle("Keep status visible while paused", isOn: $preferences.discordSharePaused)
-                .accessibilityIdentifier("discord.share-paused")
-                .onChange(of: preferences.discordSharePaused) { _, _ in refresh() }
-            if preferences.discordSharePaused {
-                TextField("Paused status template", text: $preferences.discordPausedText).onSubmit { refresh() }
-            }
-            Picker("Large image", selection: $preferences.discordLargeImage) {
-                ForEach(DiscordLargeImage.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .accessibilityIdentifier("discord.large-image")
-            .onChange(of: preferences.discordLargeImage) { _, _ in refresh() }
-            TextField("Large image hover text", text: $preferences.discordLargeImageText, prompt: Text("Optional"))
-                .onSubmit { refresh() }
-            Picker("Small image", selection: $preferences.discordSmallImage) {
-                ForEach(DiscordSmallImage.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .accessibilityIdentifier("discord.small-image")
-            .onChange(of: preferences.discordSmallImage) { _, _ in refresh() }
-            if preferences.discordSmallImage != .none {
-                TextField("Small image hover text", text: $preferences.discordSmallImageText, prompt: Text("Automatic"))
+                }
+                .accessibilityIdentifier("discord.activity-style")
+                .onChange(of: preferences.discordActivityType) { _, _ in refresh() }
+                TextField("Activity name", text: $preferences.discordActivityName, prompt: Text("PresenceFM"))
+                    .accessibilityIdentifier("discord.activity-name")
                     .onSubmit { refresh() }
-            }
-            Toggle("Show listening link", isOn: $preferences.showLink)
-                .accessibilityIdentifier("discord.show-link")
-                .onChange(of: preferences.showLink) { _, _ in refresh() }
-            if preferences.showLink {
-                TextField("Button label", text: $preferences.discordButtonLabel, prompt: Text("Automatic for each platform"))
+                Text("This is the text after “\(preferences.discordActivityType.rawValue)” in Discord. Templates are supported.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Picker("First line", selection: $preferences.discordLineOne) {
+                    ForEach(DiscordLineFormat.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .accessibilityIdentifier("discord.first-line")
+                .onChange(of: preferences.discordLineOne) { _, _ in refresh() }
+                if preferences.discordLineOne == .custom {
+                    TextField("First line template", text: $preferences.discordCustomLineOne).onSubmit { refresh() }
+                }
+                Picker("Second line", selection: $preferences.discordLineTwo) {
+                    ForEach(DiscordLineFormat.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .accessibilityIdentifier("discord.second-line")
+                .onChange(of: preferences.discordLineTwo) { _, _ in refresh() }
+                if preferences.discordLineTwo == .custom {
+                    TextField("Second line template", text: $preferences.discordCustomLineTwo).onSubmit { refresh() }
+                }
+                Toggle("Include album in formatted lines", isOn: $preferences.showAlbum)
+                    .onChange(of: preferences.showAlbum) { _, _ in refresh() }
+                Picker("Timer", selection: $preferences.discordTimerStyle) {
+                    ForEach(DiscordTimerStyle.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .accessibilityIdentifier("discord.timer")
+                .onChange(of: preferences.discordTimerStyle) { _, _ in refresh() }
+                Toggle("Keep status visible while paused", isOn: $preferences.discordSharePaused)
+                    .accessibilityIdentifier("discord.share-paused")
+                    .onChange(of: preferences.discordSharePaused) { _, _ in refresh() }
+                if preferences.discordSharePaused {
+                    TextField("Paused status template", text: $preferences.discordPausedText).onSubmit { refresh() }
+                }
+                Picker("Large image", selection: $preferences.discordLargeImage) {
+                    ForEach(DiscordLargeImage.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .accessibilityIdentifier("discord.large-image")
+                .onChange(of: preferences.discordLargeImage) { _, _ in refresh() }
+                TextField("Large image hover text", text: $preferences.discordLargeImageText, prompt: Text("Optional"))
                     .onSubmit { refresh() }
-                Text("Discord limits button labels to 32 characters.").font(.caption).foregroundStyle(.secondary)
+                Picker("Small image", selection: $preferences.discordSmallImage) {
+                    ForEach(DiscordSmallImage.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .accessibilityIdentifier("discord.small-image")
+                .onChange(of: preferences.discordSmallImage) { _, _ in refresh() }
+                if preferences.discordSmallImage != .none {
+                    TextField("Small image hover text", text: $preferences.discordSmallImageText, prompt: Text("Automatic"))
+                        .onSubmit { refresh() }
+                }
+                Toggle("Show listening link", isOn: $preferences.showLink)
+                    .accessibilityIdentifier("discord.show-link")
+                    .onChange(of: preferences.showLink) { _, _ in refresh() }
+                if preferences.showLink {
+                    TextField("Button label", text: $preferences.discordButtonLabel, prompt: Text("Automatic for each platform"))
+                        .onSubmit { refresh() }
+                    Text("Discord limits button labels to 32 characters.").font(.caption).foregroundStyle(.secondary)
+                }
+                DiscordStatusPreview(
+                    firstLine: preview(preferences.discordLineOne, custom: preferences.discordCustomLineOne),
+                    secondLine: preview(preferences.discordLineTwo, custom: preferences.discordCustomLineTwo),
+                    activity: preferences.discordActivityType.rawValue,
+                    activityName: previewActivityName,
+                    timer: preferences.discordTimerStyle.rawValue
+                )
+                Text("Templates support {title}, {artist}, {album}, {platform}, {state}, {position}, and {duration}.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            DiscordStatusPreview(
-                firstLine: preview(preferences.discordLineOne, custom: preferences.discordCustomLineOne),
-                secondLine: preview(preferences.discordLineTwo, custom: preferences.discordCustomLineTwo),
-                activity: preferences.discordActivityType.rawValue,
-                activityName: previewActivityName,
-                timer: preferences.discordTimerStyle.rawValue
-            )
-            Text("Templates support {title}, {artist}, {album}, {platform}, {state}, {position}, and {duration}.")
-                .font(.caption).foregroundStyle(.secondary)
             HStack {
-                if preferences.discordEnabled { Button("Reconnect to Discord") { model.refreshDiscord() } }
+                if preferences.discordEnabled { Button("Check Discord Connection") { model.refreshDiscord() } }
             }
+        }
+    }
+
+    private var discordStatusExplanation: String {
+        switch model.discordStatus {
+        case .disabled: "Turn this on to share your current track in your Discord profile."
+        case .inactive: "Discord is available. PresenceFM will share when music starts."
+        case .offline: "Discord Desktop is closed. PresenceFM will connect automatically after you open it."
+        case .connecting: "PresenceFM is connecting to Discord now."
+        case .connected: "Your current activity can be shared with Discord."
+        case .awaitingPermission: "Discord needs permission before PresenceFM can connect."
+        case .authorizationExpired: "Reconnect Discord to continue sharing."
+        case .failed(let message): message
         }
     }
 

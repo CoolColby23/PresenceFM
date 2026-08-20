@@ -244,7 +244,11 @@ actor PlaybackMonitor: PlaybackProviding {
           if s is "stopped" then return "stopped"
           set t to current track
           set sep to ASCII character 30
-          return s & sep & (name of t as text) & sep & (artist of t as text) & sep & (album of t as text) & sep & (duration of t as text) & sep & (player position as text) & sep & (id of t as text) & sep & (spotify url of t as text)
+          set artworkAddress to ""
+          try
+            set artworkAddress to artwork url of t as text
+          end try
+          return s & sep & (name of t as text) & sep & (artist of t as text) & sep & (album of t as text) & sep & (duration of t as text) & sep & (player position as text) & sep & (id of t as text) & sep & (spotify url of t as text) & sep & artworkAddress
         end tell
         """
         var error: NSDictionary?
@@ -259,10 +263,12 @@ actor PlaybackMonitor: PlaybackProviding {
         let fields = value.components(separatedBy: CharacterSet(charactersIn: String(UnicodeScalar(30)!)))
         guard fields.count >= 8, let durationMilliseconds = Double(fields[4]), let position = Double(fields[5]) else { return nil }
         let link = URL(string: fields[7])
+        let artworkURL = fields.count > 8 ? URL(string: fields[8]) : nil
         let track = TrackMetadata(
             identity: .init(persistentID: "spotify:\(fields[6])"), title: fields[1], artist: fields[2],
             album: fields[3].isEmpty ? nil : fields[3], duration: durationMilliseconds / 1_000,
-            source: .appleMusicCatalog, appleMusicURL: link, artworkReference: nil, platform: .spotify
+            source: .appleMusicCatalog, appleMusicURL: link,
+            artworkReference: artworkURL.map(ArtworkReference.remote), platform: .spotify
         )
         return PlaybackSnapshot(
             track: track, state: fields[0] == "playing" ? .playing : .paused,

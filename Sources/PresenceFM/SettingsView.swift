@@ -3,7 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(UpdateManager.self) private var updateManager
-    @State private var category = SettingsCategory.general
+    @Environment(\.appTheme) private var theme
     @State private var backupDocument: PresenceFMBackupDocument?
     @State private var showingBackupExporter = false
     @State private var showingBackupImporter = false
@@ -11,27 +11,36 @@ struct SettingsView: View {
     @State private var showingRestoreConfirmation = false
     @State private var showingDisconnectConfirmation = false
     @State private var dataStatus = ""
+    @State private var settingsSearchText = ""
 
     var body: some View {
         @Bindable var preferences = model.preferences
-        VStack(spacing: 0) {
-            Picker("Settings Category", selection: $category) {
-                ForEach(SettingsCategory.allCases) { category in
-                    Label(category.rawValue, systemImage: category.symbol).tag(category)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-
+        @Bindable var model = model
+        HStack(spacing: 0) {
+            settingsSidebar(selection: $model.selectedSettingsCategory)
             Divider()
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(model.selectedSettingsCategory.rawValue, systemImage: model.selectedSettingsCategory.symbol)
+                        .font(BrandTypography.sectionTitle)
+                    Text(model.selectedSettingsCategory.detail)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 22)
+                .padding(.bottom, 12)
 
-            Form {
-                switch category {
+                Form {
+                    switch model.selectedSettingsCategory {
                 case .general:
                     GeneralSettingsSections(model: model, updateManager: updateManager)
+                case .appearance:
+                    Section {
+                        ThemePickerView().environment(model)
+                    }
                 case .integrations:
+                    ConnectionOverviewSection(model: model)
                     DiscordSettingsSection(model: model, preferences: preferences)
                     LastFMSettingsSection(
                         model: model,
@@ -54,10 +63,11 @@ struct SettingsView: View {
                     )
                 case .advanced:
                     AdvancedSettingsSection(model: model)
+                    }
                 }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Settings")
         .presencePanelBackground()
@@ -94,6 +104,56 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("PresenceFM will stop scrobbling and remove the saved Last.fm authorization. Your Last.fm account and listening history are not deleted.")
+        }
+    }
+
+    private func settingsSidebar(selection: Binding<SettingsCategory>) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("SETTINGS")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 4)
+                TextField("Search", text: $settingsSearchText)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.bottom, 6)
+                    .accessibilityLabel("Search settings categories")
+                ForEach(filteredSettingsCategories) { category in
+                    Button {
+                        selection.wrappedValue = category
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: category.symbol)
+                                .frame(width: 18)
+                            Text(category.rawValue)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(selection.wrappedValue == category ? theme.onPrimaryColor : Color.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(
+                            selection.wrappedValue == category ? AnyShapeStyle(Color.accentColor.gradient) : AnyShapeStyle(Color.clear),
+                            in: .rect(cornerRadius: 8)
+                        )
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.category.\(category.id)")
+                }
+            }
+            .padding(12)
+        }
+        .frame(width: 170)
+        .background(.thinMaterial)
+    }
+
+    private var filteredSettingsCategories: [SettingsCategory] {
+        guard !settingsSearchText.isEmpty else { return SettingsCategory.allCases }
+        return SettingsCategory.allCases.filter {
+            $0.rawValue.localizedCaseInsensitiveContains(settingsSearchText)
+                || $0.detail.localizedCaseInsensitiveContains(settingsSearchText)
         }
     }
 
@@ -143,22 +203,87 @@ struct SettingsView: View {
     }
 }
 
-private enum SettingsCategory: String, CaseIterable, Identifiable {
+enum SettingsCategory: String, CaseIterable, Identifiable {
     case general = "General"
-    case integrations = "Sharing"
+    case appearance = "Appearance"
+    case integrations = "Connections"
     case players = "Players"
     case data = "Data"
     case advanced = "Advanced"
 
     var id: Self { self }
+    var detail: String {
+        switch self {
+        case .general: "Startup, product tour, and software updates"
+        case .appearance: "Choose how PresenceFM looks in light and dark mode"
+        case .integrations: "Connect Discord and Last.fm, then control what gets shared"
+        case .players: "Choose which music apps PresenceFM watches and their priority"
+        case .data: "Manage local history and encrypted backups"
+        case .advanced: "Developer overrides and specialized options"
+        }
+    }
     var symbol: String {
         switch self {
         case .general: "gear"
+        case .appearance: "paintpalette"
         case .integrations: "antenna.radiowaves.left.and.right"
         case .players: "music.note.list"
         case .data: "externaldrive"
         case .advanced: "slider.horizontal.3"
         }
+    }
+}
+
+private struct ConnectionOverviewSection: View {
+    let model: AppModel
+
+    var body: some View {
+        Section("Connection Overview") {
+            SettingsConnectionRow(
+                name: model.playbackServiceName,
+                detail: "Detects the music playing on this Mac",
+                status: model.musicStatus
+            )
+            SettingsConnectionRow(
+                name: "Discord",
+                detail: model.preferences.discordEnabled ? "Shares your current activity" : "Activity sharing is turned off",
+                status: model.discordStatus
+            )
+            SettingsConnectionRow(
+                name: "Last.fm",
+                detail: model.preferences.lastFMEnabled ? "Keeps your listening history in sync" : "Scrobbling is turned off",
+                status: model.lastFMStatus
+            )
+        }
+    }
+}
+
+private struct SettingsConnectionRow: View {
+    let name: String
+    let detail: String
+    let status: ServiceStatus
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 9, height: 9)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.callout.weight(.semibold))
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(status.presentationLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(statusColor)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(name), \(status.presentationLabel). \(detail)")
+    }
+
+    private var statusColor: Color {
+        status.tintColor
     }
 }
 
@@ -205,33 +330,46 @@ private struct LastFMSettingsSection: View {
     let model: AppModel
     let preferences: Preferences
     let disconnect: () -> Void
+    @State private var showingCredentials = false
 
     var body: some View {
         @Bindable var model = model
         @Bindable var preferences = preferences
         Section("Last.fm") {
-            SecureField("API Key", text: $model.credentialDraft.lastFMAPIKey)
-            SecureField("Shared Secret", text: $model.credentialDraft.lastFMSecret)
             Toggle("Enable scrobbling", isOn: $preferences.lastFMEnabled)
                 .onChange(of: preferences.lastFMEnabled) { _, value in model.setLastFMEnabled(value) }
             Toggle("Send now playing", isOn: $preferences.sendNowPlaying)
             if !model.lastFMUsername.isEmpty {
                 LabeledContent("Connected account", value: model.lastFMUsername)
                 Button("Disconnect Last.fm…", role: .destructive, action: disconnect)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Connect Last.fm in three steps", systemImage: "list.number")
+                        .font(.callout.weight(.semibold))
+                    Text("1. Save your Last.fm API credentials.  2. Authorize PresenceFM in your browser.  3. Return here and complete authorization.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                DisclosureGroup("API credentials", isExpanded: $showingCredentials) {
+                    SecureField("API Key", text: $model.credentialDraft.lastFMAPIKey)
+                    SecureField("Shared Secret", text: $model.credentialDraft.lastFMSecret)
+                    Button("Save Credentials") { Task { await model.saveCredentials() } }
+                        .presenceButton(prominent: true)
+                    Text("Blank fields keep an existing saved value. PresenceFM never displays your stored shared secret.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
-            HStack {
-                Button("Authorize in Browser") { Task { await model.beginLastFMAuthorization() } }
-                    .disabled(
-                        !model.hasStoredLastFMCredentials
-                            && (model.credentialDraft.lastFMAPIKey.isEmpty
-                                || model.credentialDraft.lastFMSecret.isEmpty)
-                    )
-                Button("I Authorized PresenceFM") { Task { await model.completeLastFMAuthorization() } }
+            if model.lastFMUsername.isEmpty {
+                HStack {
+                    Button("Authorize in Browser") { Task { await model.beginLastFMAuthorization() } }
+                        .disabled(
+                            !model.hasStoredLastFMCredentials
+                                && (model.credentialDraft.lastFMAPIKey.isEmpty
+                                    || model.credentialDraft.lastFMSecret.isEmpty)
+                        )
+                    Button("Complete Authorization") { Task { await model.completeLastFMAuthorization() } }
+                }
             }
-            Button("Save Last.fm Credentials") { Task { await model.saveCredentials() } }
-                .presenceButton(prominent: true)
-            Text("Blank credential fields keep the saved value. PresenceFM never displays your stored shared secret.")
-                .font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("Scrobble Exclusions") {
                 TextField(
                     "Artists (one per line or comma-separated)",

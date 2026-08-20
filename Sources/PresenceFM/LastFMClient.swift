@@ -70,6 +70,42 @@ actor LastFMClient: Scrobbling, ScrobbleSubmitting {
         try Self.validateScrobbleResponse(response)
     }
 
+    /// Fetches recent scrobbles from the connected Last.fm account, including listens
+    /// recorded on other devices. Requires an authorized session and username.
+    func recentTracks(limit: Int = 50) async throws -> [LastFMRemoteTrack] {
+        let credentials = try await credentials(requireSession: true)
+        guard let username = await credentialsStore.value(for: .lastFMUsername), !username.isEmpty else {
+            throw LastFMError.unauthenticated
+        }
+        let response = try await call(
+            method: "user.getRecentTracks",
+            parameters: [
+                "user": username,
+                "limit": String(min(max(limit, 1), 200)),
+                "extended": "1",
+            ],
+            signed: false,
+            sessionKey: nil,
+            credentials: credentials
+        )
+        return try Self.parseRecentTracks(response)
+    }
+
+    nonisolated static func parseRecentTracks(_ response: [String: Any]) throws -> [LastFMRemoteTrack] {
+        guard let recent = response["recenttracks"] as? [String: Any] else {
+            throw LastFMError.invalidResponse
+        }
+        let rawTracks: [[String: Any]]
+        if let array = recent["track"] as? [[String: Any]] {
+            rawTracks = array
+        } else if let single = recent["track"] as? [String: Any] {
+            rawTracks = [single]
+        } else {
+            return []
+        }
+        return rawTracks.compactMap(LastFMRemoteTrack.init(json:))
+    }
+
     private struct Credentials { let key: String; let secret: String; let sessionKey: String? }
 
     nonisolated static func scrobbleParameters(

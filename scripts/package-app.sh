@@ -47,24 +47,38 @@ plutil -insert SUAllowsAutomaticUpdates -bool true "$CONTENTS/Info.plist"
 plutil -insert PRESENCEFM_DISCORD_APPLICATION_ID -string "$DISCORD_APPLICATION_ID" "$CONTENTS/Info.plist"
 
 if [[ "${PRESENCEFM_SKIP_SIGNING:-0}" != "1" ]]; then
-  SIGNING_IDENTITY="${PRESENCEFM_SIGNING_IDENTITY:-}"
+    SIGNING_IDENTITY="${PRESENCEFM_SIGNING_IDENTITY:-}"
   if [[ -z "$SIGNING_IDENTITY" ]]; then
     SIGNING_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -n 1)"
-  fi
-  if [[ -n "$SIGNING_IDENTITY" ]]; then
+    fi
+    ENTITLEMENTS_FILE="$(mktemp -t presencefm-entitlements).plist"
+    cp "$ROOT/Distribution.entitlements" "$ENTITLEMENTS_FILE"
+    if [[ -n "$SIGNING_IDENTITY" ]]; then
+    TEAM_IDENTIFIER="$(security find-certificate -c "$SIGNING_IDENTITY" -p 2>/dev/null | openssl x509 -noout -subject -nameopt RFC2253 2>/dev/null | sed -n 's/.*OU=\([^,]*\).*/\1/p' | head -n 1)"
+    if [[ -n "$TEAM_IDENTIFIER" && "${PRESENCEFM_ENABLE_ICLOUD_SYNC:-0}" == "1" ]]; then
+      /usr/libexec/PlistBuddy -c \
+        "Set :com.apple.developer.ubiquity-kvstore-identifier $TEAM_IDENTIFIER.fm.presence.PresenceFM" \
+        "$ENTITLEMENTS_FILE"
+    else
+      /usr/libexec/PlistBuddy -c "Delete :com.apple.developer.ubiquity-kvstore-identifier" "$ENTITLEMENTS_FILE" 2>/dev/null || true
+    fi
     codesign --force --deep --options runtime --timestamp=none \
       --sign "$SIGNING_IDENTITY" "$CONTENTS/Frameworks/Sparkle.framework"
     codesign --force --options runtime --timestamp=none \
-      --entitlements "$ROOT/Distribution.entitlements" \
+      --entitlements "$ENTITLEMENTS_FILE" \
       --sign "$SIGNING_IDENTITY" "$APP"
     codesign --verify --deep --strict --verbose=2 "$APP"
     echo "Signed with $SIGNING_IDENTITY"
   else
+    # Ad-hoc signatures cannot use an iCloud key-value-store entitlement.
+    # Preferences remain available locally until an Apple-signed build is installed.
+    /usr/libexec/PlistBuddy -c "Delete :com.apple.developer.ubiquity-kvstore-identifier" "$ENTITLEMENTS_FILE" 2>/dev/null || true
     codesign --force --deep --sign - "$CONTENTS/Frameworks/Sparkle.framework"
-    codesign --force --sign - --entitlements "$ROOT/Distribution.entitlements" "$APP"
+    codesign --force --sign - --entitlements "$ENTITLEMENTS_FILE" "$APP"
     codesign --verify --deep --strict --verbose=2 "$APP"
     echo "Ad-hoc signed (no paid Apple Developer account required)"
   fi
+  rm -f "$ENTITLEMENTS_FILE"
 fi
 
 echo "Created $APP"

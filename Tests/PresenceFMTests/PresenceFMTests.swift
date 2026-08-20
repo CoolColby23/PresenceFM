@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import SwiftData
+import SwiftUI
 import Testing
 @testable import PresenceFM
 
@@ -279,8 +280,13 @@ struct ArtworkTests {
             artworkReference: .file(source)
         )
         let service = ArtworkService(directory: directory.appendingPathComponent("cache"))
-        #expect(await service.artwork(for: track) == imageData)
+        let result = await service.artworkResult(for: track)
+        #expect(result?.data == imageData)
+        #expect(result?.source == .localFile)
+        #expect(await service.artworkResult(for: track)?.source == .memoryCache)
         #expect(await service.cachedArtwork(for: track.identity) == imageData)
+        await service.invalidateArtwork(for: track.identity)
+        #expect(await service.artworkResult(for: track)?.source == .localFile)
     }
 
     @Test func rejectsCorruptArtworkAndBoundsMemoryCache() async throws {
@@ -297,6 +303,55 @@ struct ArtworkTests {
         #expect(files.count == 2)
     }
 
+    @Test func exactRemoteArtworkIsPreferredForDiscord() async throws {
+        let artworkURL = try #require(URL(string: "https://i.scdn.co/image/exact-cover"))
+        let track = TrackMetadata(
+            identity: .init(persistentID: "remote-artwork"), title: "Track", artist: "Artist",
+            album: "Album", duration: 180, source: .unsupportedStream,
+            appleMusicURL: nil, artworkReference: .remote(artworkURL), platform: .spotify
+        )
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let service = ArtworkService(directory: directory)
+
+        #expect(await service.publicArtworkURL(for: track) == artworkURL)
+        #expect(ArtworkService.directPublicArtworkURL(for: track) == artworkURL)
+    }
+
+    @Test func insecureRemoteArtworkIsUpgradedToHTTPSForDiscord() throws {
+        let artworkURL = try #require(URL(string: "http://example.com/cover.jpg"))
+        let track = TrackMetadata(
+            identity: .init(persistentID: "insecure-artwork"), title: "Track", artist: "Artist",
+            album: "Album", duration: 180, source: .unsupportedStream,
+            appleMusicURL: nil, artworkReference: .remote(artworkURL), platform: .spotify
+        )
+        #expect(ArtworkService.directPublicArtworkURL(for: track)?.absoluteString == "https://example.com/cover.jpg")
+    }
+
+    @Test func catalogArtworkRejectsAReleaseWithTheWrongAlbum() {
+        let track = TrackMetadata(
+            identity: .init(persistentID: "album-match"), title: "Track", artist: "Artist",
+            album: "Original Album", duration: 180, source: .appleMusicCatalog,
+            appleMusicURL: nil, artworkReference: nil
+        )
+        let wrongRelease = CatalogTrack(
+            trackName: "Track", artistName: "Artist", collectionName: "Different Album",
+            artworkUrl100: "https://example.com/100x100bb.jpg"
+        )
+        let misleadingSubstring = CatalogTrack(
+            trackName: "Track", artistName: "Artist", collectionName: "Different Original Album",
+            artworkUrl100: "https://example.com/100x100bb.jpg"
+        )
+        let deluxeRelease = CatalogTrack(
+            trackName: "Track", artistName: "Artist", collectionName: "Original Album (Deluxe Edition)",
+            artworkUrl100: "https://example.com/100x100bb.jpg"
+        )
+
+        #expect(!ArtworkCatalogMatcher.isReliable(wrongRelease, track: track))
+        #expect(!ArtworkCatalogMatcher.isReliable(misleadingSubstring, track: track))
+        #expect(ArtworkCatalogMatcher.isReliable(deluxeRelease, track: track))
+    }
+
     private static func imageData() -> Data? {
         let image = NSImage(size: NSSize(width: 2, height: 2))
         image.lockFocus(); NSColor.systemBlue.setFill(); NSRect(x: 0, y: 0, width: 2, height: 2).fill(); image.unlockFocus()
@@ -307,6 +362,16 @@ struct ArtworkTests {
 
 @Suite("Discord presence")
 struct DiscordPresenceTests {
+    @Test func staleSocketFileDoesNotMakeDiscordAppearAvailable() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data("stale".utf8).write(to: directory.appendingPathComponent("discord-ipc-0"))
+        let client = DiscordPresenceClient(applicationID: "test", runtimeRoots: [directory.path])
+
+        #expect(!(await client.probeAvailability()))
+    }
+
     @Test func externalArtworkURLIsSentAsLargeImage() throws {
         let artworkURL = try #require(URL(string: "https://example.com/album.jpg"))
         let presence = DiscordPresence(
@@ -315,7 +380,9 @@ struct DiscordPresenceTests {
         )
         let payload = DiscordPresenceClient.activityPayload(for: presence)
         let assets = try #require(payload["assets"] as? [String: String])
-        #expect(assets["large_image"] == artworkURL.absoluteString)
+        let largeImage = try #require(assets["large_image"])
+        #expect(largeImage.contains("wsrv.nl"))
+        #expect(largeImage.contains("example.com/album.jpg"))
         #expect(assets["large_text"] == nil)
         #expect(assets["small_image"] == ReleaseConfiguration.discordApplicationIconURL)
     }
@@ -343,8 +410,13 @@ struct DiscordPresenceTests {
             let assets = try #require(payload["assets"] as? [String: String])
             let smallImage = try #require(assets["small_image"])
             #expect(URL(string: smallImage)?.scheme == "https")
-            #expect(smallImage.contains("output=png"))
+            #expect(smallImage.contains("coolcolby23.github.io/PresenceFM/assets/external-logos/"))
+            #expect(smallImage.hasSuffix(".png"))
         }
+    }
+
+    @Test func appleMusicPlatformBadgeUsesUpdatedHostedLogo() {
+        #expect(PlaybackPlatform.appleMusic.discordSmallImageURL.hasSuffix("/apple-music.png"))
     }
 
     @Test func discordCanHideSmallImageTimerAndLink() throws {
@@ -398,6 +470,21 @@ struct DiscordPresenceTests {
         #expect(timestamps["end"] == 1_180_000)
         #expect(assets["large_text"] == nil)
         #expect(assets["small_image"] == PlaybackPlatform.spotify.discordSmallImageURL)
+        #expect(assets["large_image"]?.contains("wsrv.nl") == true)
+    }
+
+    @Test func httpArtworkIsUpgradedAndProxiedForDiscord() throws {
+        let artworkURL = try #require(URL(string: "http://is1.mzstatic.com/image/thumb/cover/100x100bb.jpg"))
+        let presence = DiscordPresence(
+            title: "Track", state: "Artist", startedAt: nil,
+            appleMusicURL: nil, artworkURL: artworkURL, buttonLabel: "Listen"
+        )
+        let payload = DiscordPresenceClient.activityPayload(for: presence)
+        let assets = try #require(payload["assets"] as? [String: String])
+        let largeImage = try #require(assets["large_image"])
+        #expect(largeImage.contains("wsrv.nl"))
+        #expect(largeImage.contains("https://is1.mzstatic.com"))
+        #expect(!largeImage.contains("http://is1.mzstatic.com"))
     }
 
     @Test func discordTextIsTrimmedBoundedAndNeverBlank() throws {
@@ -427,14 +514,27 @@ struct DiscordPresenceTests {
 struct AdditionalPlaybackPlatformTests {
     private let separator = String(UnicodeScalar(30)!)
 
+    @Test func playbackControlsAreOnlyShownForScriptablePlayers() {
+        #expect(SystemPlaybackController.supports(.appleMusic))
+        #expect(SystemPlaybackController.supports(.spotify))
+        #expect(!SystemPlaybackController.supports(.youtubeMusic))
+        #expect(!SystemPlaybackController.supports(.tidal))
+        #expect(!SystemPlaybackController.supports(nil))
+    }
+
     @Test func parsesSpotifyPlayingAndPausedStates() throws {
-        let playing = ["playing", "Track", "Artist", "Album", "180000", "42.5", "spotify:track:abc", "spotify:track:abc"].joined(separator: separator)
+        let playing = ["playing", "Track", "Artist", "Album", "180000", "42.5", "spotify:track:abc", "spotify:track:abc", "https://i.scdn.co/image/cover"].joined(separator: separator)
         let paused = ["paused", "Track", "Artist", "Album", "180000", "43", "spotify:track:abc", "spotify:track:abc"].joined(separator: separator)
         let playingSnapshot = try #require(PlaybackMonitor.parseSpotify(playing))
         let pausedSnapshot = try #require(PlaybackMonitor.parseSpotify(paused))
         #expect(playingSnapshot.state == .playing)
         #expect(pausedSnapshot.state == .paused)
         #expect(playingSnapshot.track?.duration == 180)
+        if case .remote(let url)? = playingSnapshot.track?.artworkReference {
+            #expect(url.absoluteString == "https://i.scdn.co/image/cover")
+        } else {
+            Issue.record("Spotify artwork URL was not retained")
+        }
         #expect(playingSnapshot.track?.platform == .spotify)
     }
 
@@ -487,7 +587,7 @@ struct AdditionalPlaybackPlatformTests {
     }
 
     @Test func parsesYTMDesktopCompanionState() throws {
-        let data = Data(#"{"player":{"trackState":1,"videoProgress":42.5},"video":{"author":"Artist","title":"Track","album":"Album","durationSeconds":180,"id":"abc123","isLive":false}}"#.utf8)
+        let data = Data(#"{"player":{"trackState":1,"videoProgress":42.5},"video":{"author":"Artist","title":"Track","album":"Album","durationSeconds":180,"id":"abc123","isLive":false,"thumbnails":[{"url":"https://example.com/small.jpg"},{"url":"https://example.com/large.jpg"}]}}"#.utf8)
         let observedAt = Date(timeIntervalSince1970: 1_000)
         let parsed = try YTMDesktopClient.parseSnapshot(data, observedAt: observedAt)
         let snapshot = try #require(parsed)
@@ -496,6 +596,11 @@ struct AdditionalPlaybackPlatformTests {
         #expect(snapshot.observedAt == observedAt)
         #expect(snapshot.track?.platform == .youtubeMusic)
         #expect(snapshot.track?.appleMusicURL?.absoluteString == "https://music.youtube.com/watch?v=abc123")
+        if case .remote(let url)? = snapshot.track?.artworkReference {
+            #expect(url.absoluteString == "https://example.com/large.jpg")
+        } else {
+            Issue.record("YouTube Music thumbnail was not retained")
+        }
     }
 
     @Test func liveYTMDesktopVideoIsNotScrobbleable() throws {
@@ -565,6 +670,45 @@ struct LastFMTransportTests {
         #expect(parameters["chosenByUser"] == "0")
         #expect(parameters["timestamp"] == "1000")
     }
+
+    @Test func recentTracksParserReadsScrobblesAndNowPlaying() throws {
+        let payload: [String: Any] = [
+            "recenttracks": [
+                "track": [
+                    [
+                        "name": "Now Song",
+                        "artist": ["#text": "Live Artist"],
+                        "album": ["#text": "Live Album"],
+                        "url": "https://www.last.fm/music/Live+Artist/_/Now+Song",
+                        "image": [
+                            ["size": "small", "#text": "https://example.com/small.jpg"],
+                            ["size": "extralarge", "#text": "https://example.com/large.jpg"],
+                        ],
+                        "@attr": ["nowplaying": "true"],
+                    ],
+                    [
+                        "name": "Past Song",
+                        "artist": ["#text": "Studio Artist"],
+                        "album": ["#text": "Studio Album"],
+                        "date": ["uts": "1700000000", "#text": "14 Nov 2023, 22:13"],
+                        "image": [
+                            ["size": "large", "#text": "https://example.com/past.jpg"],
+                        ],
+                    ],
+                ] as [[String: Any]],
+            ] as [String: Any],
+        ]
+        let tracks = try LastFMClient.parseRecentTracks(payload)
+        #expect(tracks.count == 2)
+        #expect(tracks[0].title == "Now Song")
+        #expect(tracks[0].isNowPlaying)
+        #expect(tracks[0].listenedAt == nil)
+        #expect(tracks[0].imageURL?.absoluteString == "https://example.com/large.jpg")
+        #expect(tracks[1].title == "Past Song")
+        #expect(tracks[1].artist == "Studio Artist")
+        #expect(tracks[1].listenedAt == Date(timeIntervalSince1970: 1_700_000_000))
+        #expect(!tracks[1].isNowPlaying)
+    }
 }
 
 private final class TestURLProtocol: URLProtocol, @unchecked Sendable {
@@ -588,7 +732,7 @@ private final class TestURLProtocol: URLProtocol, @unchecked Sendable {
 @MainActor
 @Suite("Preferences and notifications")
 struct PreferencesAndNotificationTests {
-    @Test func enabledIntegrationsStartInConnectingState() throws {
+    @Test func enabledIntegrationsStartInHonestIdleStates() throws {
         let name = "PresenceFMTests.\(UUID())"
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
@@ -599,7 +743,7 @@ struct PreferencesAndNotificationTests {
             preferences: Preferences(defaults: defaults),
             notifications: NotificationCoordinator(delivery: FakeNotificationDelivery())
         )
-        #expect(model.discordStatus == .connecting)
+        #expect(model.discordStatus == .inactive)
         #expect(model.lastFMStatus == .connecting)
     }
 
@@ -613,12 +757,40 @@ struct PreferencesAndNotificationTests {
         preferences.discordApplicationID = "public-id"
         preferences.privateUntil = Date(timeIntervalSince1970: 123)
         preferences.playbackProviderOrder = [.spotify, .appleMusic, .tidal, .youtubeMusic]
+        preferences.appearanceMode = .dark
+        preferences.lightThemeID = "rose"
+        preferences.darkThemeID = "grove"
+        preferences.menuBarExpanded = false
+        preferences.toggleDashboardSection(.queue)
+        preferences.toggleDashboardSection(.nowPlaying)
         let reloaded = Preferences(defaults: defaults)
         #expect(!reloaded.showAlbum)
         #expect(reloaded.discordActivityName == "My music")
         #expect(reloaded.discordApplicationID == "public-id")
         #expect(reloaded.privateUntil == Date(timeIntervalSince1970: 123))
         #expect(reloaded.playbackProviderOrder == [.spotify, .appleMusic, .tidal, .youtubeMusic])
+        #expect(reloaded.appearanceMode == .dark)
+        #expect(reloaded.lightThemeID == "rose")
+        #expect(reloaded.darkThemeID == "grove")
+        #expect(!reloaded.menuBarExpanded)
+        #expect(!reloaded.isDashboardSectionVisible(.queue))
+        #expect(reloaded.isDashboardSectionVisible(.nowPlaying))
+        #expect(reloaded.theme(for: .dark).id == "grove")
+    }
+
+    @Test func themeLibraryIsCuratedAndRejectsUnknownIDs() {
+        #expect(AppTheme.presets.count >= 16)
+        #expect(Set(AppTheme.presets.map(\.id)).count == AppTheme.presets.count)
+        #expect(AppTheme.validatedID("not-installed") == AppTheme.defaultID)
+        #expect(AppTheme.presets.allSatisfy { Color(hex: $0.primaryHex) != nil && Color(hex: $0.secondaryHex) != nil })
+    }
+
+    @Test func everyThemeProvidesReadableSemanticAccentColors() {
+        for theme in AppTheme.presets {
+            #expect(theme.readablePrimary(for: .light).contrastRatio(with: theme.lightBackground) >= 4.5)
+            #expect(theme.readablePrimary(for: .dark).contrastRatio(with: theme.darkBackground) >= 4.5)
+            #expect(theme.onPrimaryColor.contrastRatio(with: theme.primaryColor) >= 4.5)
+        }
     }
 
     @Test func discordProfilesCaptureApplyAndPersist() throws {

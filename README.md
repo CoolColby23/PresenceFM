@@ -27,12 +27,14 @@ path. The concise recording plan is in
 Entrant-only video, identity, `/feedback`, and final-submit steps are in
 [Documentation/BUILD-WEEK-FINAL-SUBMISSION.md](Documentation/BUILD-WEEK-FINAL-SUBMISSION.md).
 
-## Version 1.0 release candidate
+## Version 1.1
 
-The repository now builds as `1.0.0`, but the public 1.0 release remains gated
-on the account-, hardware-, and OS-dependent checks in
-[Documentation/QA-1.0.0-RC.md](Documentation/QA-1.0.0-RC.md). Until those are
-recorded, GitHub's latest published release remains the stable download.
+The repository builds as `1.1.0`. GitHub Releases use two channels:
+
+- **Production** — tags like `v1.1.0` publish as Latest and update the Sparkle appcast.
+- **Pre-release** — tags like `v1.1.0-beta.1` or `v1.1.0-rc.1` publish as Pre-release and never replace Latest.
+
+Until a 1.1 production tag is published, GitHub's Latest release remains the stable download (currently 0.4.0). See [CONTRIBUTING.md](CONTRIBUTING.md) for the release ladder.
 
 ### Highlights
 

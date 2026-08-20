@@ -15,20 +15,25 @@ enum PlaybackPlatform: String, Sendable, Codable, CaseIterable, Identifiable {
     case tidal = "TIDAL"
 
     var id: Self { self }
+
+    /// Stable HTTPS PNG hosted on the project site so Discord always has a
+    /// fetchable platform badge (Simple Icons SVGs are not reliable there).
     var discordSmallImageURL: String {
-        let icon: String
+        let fileName: String
         switch self {
-        case .appleMusic: icon = "applemusic/FA243C"
-        case .spotify: icon = "spotify/1ED760"
-        case .youtubeMusic: icon = "youtubemusic/FF0033"
-        case .tidal: icon = "tidal/000000"
+        case .appleMusic: fileName = "apple-music.png"
+        case .spotify: fileName = "spotify.png"
+        case .youtubeMusic: fileName = "youtubemusic.png"
+        case .tidal: fileName = "tidal.png"
         }
-        return "https://wsrv.nl/?url=cdn.simpleicons.org/\(icon)&output=png&w=512&h=512"
+        return "https://coolcolby23.github.io/PresenceFM/assets/external-logos/\(fileName)"
     }
 }
 
 enum ArtworkReference: Sendable, Hashable, Codable {
     case file(URL)
+    case remote(URL)
+    case embedded(Data)
 }
 
 struct TrackMetadata: Sendable, Hashable, Codable {
@@ -240,6 +245,93 @@ enum DiscordSmallImage: String, Sendable, CaseIterable, Identifiable {
     case playbackPlatform = "Music platform logo"
     case none = "None"
     var id: Self { self }
+}
+
+/// A scrobble fetched from Last.fm (`user.getRecentTracks`), including listens from other devices.
+struct LastFMRemoteTrack: Sendable, Hashable, Identifiable {
+    let id: String
+    let title: String
+    let artist: String
+    let album: String?
+    let listenedAt: Date?
+    let isNowPlaying: Bool
+    let imageURL: URL?
+    let url: URL?
+
+    init?(json: [String: Any]) {
+        let title = (json["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let artist: String = {
+            if let value = json["artist"] as? String { return value }
+            if let object = json["artist"] as? [String: Any] {
+                return (object["#text"] as? String) ?? (object["name"] as? String) ?? ""
+            }
+            return ""
+        }().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, !artist.isEmpty else { return nil }
+
+        let album: String? = {
+            if let value = json["album"] as? String { return value.isEmpty ? nil : value }
+            if let object = json["album"] as? [String: Any] {
+                let text = (object["#text"] as? String) ?? ""
+                return text.isEmpty ? nil : text
+            }
+            return nil
+        }()
+
+        let attributes = json["@attr"] as? [String: Any]
+        let isNowPlaying = (attributes?["nowplaying"] as? String) == "true"
+            || (attributes?["nowplaying"] as? Bool) == true
+
+        let listenedAt: Date? = {
+            guard let dateObject = json["date"] as? [String: Any] else { return nil }
+            if let uts = dateObject["uts"] as? String, let seconds = TimeInterval(uts) {
+                return Date(timeIntervalSince1970: seconds)
+            }
+            if let uts = dateObject["uts"] as? Int {
+                return Date(timeIntervalSince1970: TimeInterval(uts))
+            }
+            return nil
+        }()
+
+        let imageURL = Self.bestImageURL(from: json["image"])
+        let url = (json["url"] as? String).flatMap(URL.init(string:))
+        let idSeed = [
+            title,
+            artist,
+            album ?? "",
+            listenedAt.map { String(Int($0.timeIntervalSince1970)) } ?? (isNowPlaying ? "now" : "unknown"),
+        ].joined(separator: "|")
+
+        self.id = idSeed
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.listenedAt = listenedAt
+        self.isNowPlaying = isNowPlaying
+        self.imageURL = imageURL
+        self.url = url
+    }
+
+    private static func bestImageURL(from value: Any?) -> URL? {
+        guard let images = value as? [[String: Any]] else { return nil }
+        let preferredSizes = ["extralarge", "large", "medium", "small"]
+        for size in preferredSizes {
+            if let match = images.first(where: { ($0["size"] as? String) == size }),
+               let text = match["#text"] as? String,
+               !text.isEmpty,
+               let url = URL(string: text)
+            {
+                return url
+            }
+        }
+        if let last = images.last,
+           let text = last["#text"] as? String,
+           !text.isEmpty
+        {
+            return URL(string: text)
+        }
+        return nil
+    }
 }
 
 enum ServiceStatus: Sendable, Equatable {

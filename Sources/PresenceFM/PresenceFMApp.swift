@@ -29,18 +29,21 @@ struct PresenceFMApp: App {
 
     var body: some Scene {
         WindowGroup("PresenceFM", id: "dashboard") {
-            DashboardView()
-                .environment(model)
-                .environment(updateManager)
-                .tint(BrandColors.electricBlue)
+            ThemedSceneRoot(preferences: model.preferences) {
+                DashboardView()
+                    .environment(model)
+                    .environment(updateManager)
+            }
         }
             .defaultSize(width: 980, height: 680)
             .modelContainer(model.store.container)
 
         MenuBarExtra {
-            MenuBarControlCenterView()
-                .environment(model)
-                .modelContainer(model.store.container)
+            ThemedSceneRoot(preferences: model.preferences) {
+                MenuBarControlCenterView()
+                    .environment(model)
+                    .modelContainer(model.store.container)
+            }
         } label: {
             MenuBarBrandMark()
                 .frame(width: 18, height: 18)
@@ -49,11 +52,12 @@ struct PresenceFMApp: App {
         .menuBarExtraStyle(.window)
 
         Settings {
-            SettingsView()
-                .environment(model)
-                .environment(updateManager)
-                .tint(BrandColors.electricBlue)
-                .frame(minWidth: 620, minHeight: 520)
+            ThemedSceneRoot(preferences: model.preferences) {
+                SettingsView()
+                    .environment(model)
+                    .environment(updateManager)
+                    .frame(minWidth: 780, minHeight: 560)
+            }
         }
             .modelContainer(model.store.container)
 
@@ -72,9 +76,17 @@ private struct PresenceFMCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Navigate") {
+            Button("Quick Open…") {
+                model.commandPalettePresented = true
+                NSApp.showDashboard(using: openWindow)
+            }
+            .keyboardShortcut("k", modifiers: .command)
+
+            Divider()
+
             ForEach(Array(DashboardSection.allCases.enumerated()), id: \.element.id) { index, section in
-                Button(section.rawValue) {
-                    model.selectedSection = section
+                Button(section.title) {
+                    model.navigate(to: section)
                     NSApp.showDashboard(using: openWindow)
                 }
                 .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
@@ -95,12 +107,28 @@ private struct PresenceFMCommands: Commands {
 
 extension NSApplication {
     func showDashboard(using openWindow: OpenWindowAction) {
-        if let dashboard = windows.first(where: { $0.identifier?.rawValue.hasPrefix("dashboard-AppWindow") == true }) {
+        if let dashboard = windows.first(where: { $0.identifier?.rawValue.contains("dashboard") == true }) {
             dashboard.makeKeyAndOrderFront(nil)
+            dashboard.orderFrontRegardless()
         } else {
             openWindow(id: "dashboard")
         }
-        activate()
+        activate(ignoringOtherApps: true)
+    }
+}
+
+private struct ThemedSceneRoot<Content: View>: View {
+    let preferences: Preferences
+    @ViewBuilder let content: Content
+    @Environment(\.colorScheme) private var systemColorScheme
+
+    var body: some View {
+        let resolvedScheme = preferences.appearanceMode.preferredColorScheme ?? systemColorScheme
+        let theme = preferences.theme(for: resolvedScheme)
+        content
+            .environment(\.appTheme, theme)
+            .preferredColorScheme(preferences.appearanceMode.preferredColorScheme)
+            .tint(theme.primaryColor)
     }
 }
 
