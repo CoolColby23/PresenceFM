@@ -76,24 +76,60 @@ struct AppTheme: Identifiable, Hashable {
 
     static let defaultID = "presence"
     static let presets: [AppTheme] = [
-        .init(id: "presence", name: "Presence", description: "Electric blue and cyan", primaryHex: "#1F66FF", secondaryHex: "#14D9FF", darkBackgroundHex: "#0B1020", lightBackgroundHex: "#F7F9FF"),
-        .init(id: "midnight", name: "Midnight", description: "Indigo after dark", primaryHex: "#6366F1", secondaryHex: "#818CF8", darkBackgroundHex: "#090B1A", lightBackgroundHex: "#F5F6FF"),
-        .init(id: "grove", name: "Grove", description: "Emerald and sage", primaryHex: "#0F9F6E", secondaryHex: "#34D399", darkBackgroundHex: "#071C15", lightBackgroundHex: "#F0FDF4"),
-        .init(id: "ocean", name: "Ocean", description: "Abyss and sky blue", primaryHex: "#0284C7", secondaryHex: "#38BDF8", darkBackgroundHex: "#071923", lightBackgroundHex: "#F0F9FF"),
-        .init(id: "ember", name: "Ember", description: "Copper and amber", primaryHex: "#EA580C", secondaryHex: "#F59E0B", darkBackgroundHex: "#251006", lightBackgroundHex: "#FFF7ED"),
-        .init(id: "iris", name: "Iris", description: "Violet and lavender", primaryHex: "#7C3AED", secondaryHex: "#C084FC", darkBackgroundHex: "#190B2B", lightBackgroundHex: "#FAF5FF"),
-        .init(id: "rose", name: "Rose", description: "Pink and rosewater", primaryHex: "#DB2777", secondaryHex: "#FB7185", darkBackgroundHex: "#260B17", lightBackgroundHex: "#FFF1F2"),
-        .init(id: "cherry", name: "Cherry", description: "Crimson and coral", primaryHex: "#DC2626", secondaryHex: "#FB7185", darkBackgroundHex: "#260909", lightBackgroundHex: "#FFF5F5"),
-        .init(id: "sunset", name: "Sunset", description: "Magenta and tangerine", primaryHex: "#E11D48", secondaryHex: "#FB923C", darkBackgroundHex: "#290B13", lightBackgroundHex: "#FFF7ED"),
-        .init(id: "lemon", name: "Lemon", description: "Gold and citrus", primaryHex: "#CA8A04", secondaryHex: "#FACC15", darkBackgroundHex: "#211A05", lightBackgroundHex: "#FEFCE8"),
-        .init(id: "mint", name: "Mint", description: "Fresh teal and seafoam", primaryHex: "#0D9488", secondaryHex: "#5EEAD4", darkBackgroundHex: "#061D1B", lightBackgroundHex: "#F0FDFA"),
-        .init(id: "aqua", name: "Aqua", description: "Cyan and turquoise", primaryHex: "#0891B2", secondaryHex: "#22D3EE", darkBackgroundHex: "#061C24", lightBackgroundHex: "#ECFEFF"),
-        .init(id: "cobalt", name: "Cobalt", description: "Royal blue and ice", primaryHex: "#2563EB", secondaryHex: "#60A5FA", darkBackgroundHex: "#08142C", lightBackgroundHex: "#EFF6FF"),
-        .init(id: "plum", name: "Plum", description: "Purple and fuchsia", primaryHex: "#9333EA", secondaryHex: "#E879F9", darkBackgroundHex: "#200B2C", lightBackgroundHex: "#FDF4FF"),
-        .init(id: "mocha", name: "Mocha", description: "Coffee and caramel", primaryHex: "#A16207", secondaryHex: "#D6A96C", darkBackgroundHex: "#1E160E", lightBackgroundHex: "#FAF7F2"),
-        .init(id: "slate", name: "Slate", description: "Cool monochrome", primaryHex: "#475569", secondaryHex: "#94A3B8", darkBackgroundHex: "#0F172A", lightBackgroundHex: "#F8FAFC"),
-        .init(id: "orchid", name: "Orchid", description: "Soft lilac and bloom", primaryHex: "#A855F7", secondaryHex: "#F0ABFC", darkBackgroundHex: "#21102D", lightBackgroundHex: "#FDF4FF"),
-        .init(id: "lime", name: "Lime", description: "Bright green and chartreuse", primaryHex: "#65A30D", secondaryHex: "#A3E635", darkBackgroundHex: "#142005", lightBackgroundHex: "#F7FEE7")
+        .init(
+            id: "presence", name: "Presence", description: "Electric blue and cyan", primaryHex: "#1F66FF", secondaryHex: "#14D9FF",
+            darkBackgroundHex: "#0B1020", lightBackgroundHex: "#F7F9FF"),
+        .init(
+            id: "midnight", name: "Midnight", description: "Indigo after dark", primaryHex: "#6366F1", secondaryHex: "#818CF8", darkBackgroundHex: "#090B1A",
+            lightBackgroundHex: "#F5F6FF"),
+        .init(
+            id: "grove", name: "Grove", description: "Emerald and sage", primaryHex: "#0F9F6E", secondaryHex: "#34D399", darkBackgroundHex: "#071C15",
+            lightBackgroundHex: "#F0FDF4"),
+        .init(
+            id: "ocean", name: "Ocean", description: "Abyss and sky blue", primaryHex: "#0284C7", secondaryHex: "#38BDF8", darkBackgroundHex: "#071923",
+            lightBackgroundHex: "#F0F9FF"),
+        .init(
+            id: "ember", name: "Ember", description: "Copper and amber", primaryHex: "#EA580C", secondaryHex: "#F59E0B", darkBackgroundHex: "#251006",
+            lightBackgroundHex: "#FFF7ED"),
+        .init(
+            id: "iris", name: "Iris", description: "Violet and lavender", primaryHex: "#7C3AED", secondaryHex: "#C084FC", darkBackgroundHex: "#190B2B",
+            lightBackgroundHex: "#FAF5FF"),
+        .init(
+            id: "rose", name: "Rose", description: "Pink and rosewater", primaryHex: "#DB2777", secondaryHex: "#FB7185", darkBackgroundHex: "#260B17",
+            lightBackgroundHex: "#FFF1F2"),
+        .init(
+            id: "cherry", name: "Cherry", description: "Crimson and coral", primaryHex: "#DC2626", secondaryHex: "#FB7185", darkBackgroundHex: "#260909",
+            lightBackgroundHex: "#FFF5F5"),
+        .init(
+            id: "sunset", name: "Sunset", description: "Magenta and tangerine", primaryHex: "#E11D48", secondaryHex: "#FB923C", darkBackgroundHex: "#290B13",
+            lightBackgroundHex: "#FFF7ED"),
+        .init(
+            id: "lemon", name: "Lemon", description: "Gold and citrus", primaryHex: "#CA8A04", secondaryHex: "#FACC15", darkBackgroundHex: "#211A05",
+            lightBackgroundHex: "#FEFCE8"),
+        .init(
+            id: "mint", name: "Mint", description: "Fresh teal and seafoam", primaryHex: "#0D9488", secondaryHex: "#5EEAD4", darkBackgroundHex: "#061D1B",
+            lightBackgroundHex: "#F0FDFA"),
+        .init(
+            id: "aqua", name: "Aqua", description: "Cyan and turquoise", primaryHex: "#0891B2", secondaryHex: "#22D3EE", darkBackgroundHex: "#061C24",
+            lightBackgroundHex: "#ECFEFF"),
+        .init(
+            id: "cobalt", name: "Cobalt", description: "Royal blue and ice", primaryHex: "#2563EB", secondaryHex: "#60A5FA", darkBackgroundHex: "#08142C",
+            lightBackgroundHex: "#EFF6FF"),
+        .init(
+            id: "plum", name: "Plum", description: "Purple and fuchsia", primaryHex: "#9333EA", secondaryHex: "#E879F9", darkBackgroundHex: "#200B2C",
+            lightBackgroundHex: "#FDF4FF"),
+        .init(
+            id: "mocha", name: "Mocha", description: "Coffee and caramel", primaryHex: "#A16207", secondaryHex: "#D6A96C", darkBackgroundHex: "#1E160E",
+            lightBackgroundHex: "#FAF7F2"),
+        .init(
+            id: "slate", name: "Slate", description: "Cool monochrome", primaryHex: "#475569", secondaryHex: "#94A3B8", darkBackgroundHex: "#0F172A",
+            lightBackgroundHex: "#F8FAFC"),
+        .init(
+            id: "orchid", name: "Orchid", description: "Soft lilac and bloom", primaryHex: "#A855F7", secondaryHex: "#F0ABFC", darkBackgroundHex: "#21102D",
+            lightBackgroundHex: "#FDF4FF"),
+        .init(
+            id: "lime", name: "Lime", description: "Bright green and chartreuse", primaryHex: "#65A30D", secondaryHex: "#A3E635", darkBackgroundHex: "#142005",
+            lightBackgroundHex: "#F7FEE7"),
     ]
 
     static func find(_ id: String?) -> AppTheme {
@@ -130,15 +166,16 @@ extension Color {
 
     func mixed(with other: Color, amount: CGFloat) -> Color {
         guard let lhs = NSColor(self).usingColorSpace(.sRGB),
-              let rhs = NSColor(other).usingColorSpace(.sRGB),
-              let blended = lhs.blended(withFraction: max(0, min(1, amount)), of: rhs)
+            let rhs = NSColor(other).usingColorSpace(.sRGB),
+            let blended = lhs.blended(withFraction: max(0, min(1, amount)), of: rhs)
         else { return self }
         return Color(nsColor: blended)
     }
 
     func contrastRatio(with other: Color) -> Double {
         guard let lhs = NSColor(self).usingColorSpace(.sRGB),
-              let rhs = NSColor(other).usingColorSpace(.sRGB) else { return 1 }
+            let rhs = NSColor(other).usingColorSpace(.sRGB)
+        else { return 1 }
         let high = max(lhs.relativeLuminance, rhs.relativeLuminance)
         let low = min(lhs.relativeLuminance, rhs.relativeLuminance)
         return (high + 0.05) / (low + 0.05)

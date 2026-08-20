@@ -24,11 +24,12 @@ enum SystemPlaybackController {
     static func perform(_ command: PlaybackControlCommand, platform: PlaybackPlatform) -> Bool {
         guard supports(platform) else { return false }
         let application = platform == .spotify ? "Spotify" : "Music"
-        let action = switch command {
-        case .previous: "previous track"
-        case .toggle: "playpause"
-        case .next: "next track"
-        }
+        let action =
+            switch command {
+            case .previous: "previous track"
+            case .toggle: "playpause"
+            case .next: "next track"
+            }
         var error: NSDictionary?
         NSAppleScript(source: "tell application \"\(application)\" to \(action)")?
             .executeAndReturnError(&error)

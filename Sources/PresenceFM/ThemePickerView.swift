@@ -62,7 +62,9 @@ struct ThemePickerView: View {
                     )
                     .overlay {
                         RoundedRectangle(cornerRadius: BrandRadius.md, style: .continuous)
-                            .strokeBorder(selection.wrappedValue == mode ? Color.accentColor : Color.primary.opacity(0.10), lineWidth: selection.wrappedValue == mode ? 2 : 1)
+                            .strokeBorder(
+                                selection.wrappedValue == mode ? Color.accentColor : Color.primary.opacity(0.10),
+                                lineWidth: selection.wrappedValue == mode ? 2 : 1)
                     }
                 }
                 .buttonStyle(.plain)

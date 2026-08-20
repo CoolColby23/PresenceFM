@@ -33,36 +33,36 @@ struct SettingsView: View {
 
                 Form {
                     switch model.selectedSettingsCategory {
-                case .general:
-                    GeneralSettingsSections(model: model, updateManager: updateManager)
-                case .appearance:
-                    Section {
-                        ThemePickerView().environment(model)
-                    }
-                case .integrations:
-                    ConnectionOverviewSection(model: model)
-                    DiscordSettingsSection(model: model, preferences: preferences)
-                    LastFMSettingsSection(
-                        model: model,
-                        preferences: preferences,
-                        disconnect: { showingDisconnectConfirmation = true }
-                    )
-                case .players:
-                    PlaybackProviderSettingsSection(model: model, preferences: preferences)
-                case .data:
-                    DataSettingsSections(
-                        model: model,
-                        preferences: preferences,
-                        dataStatus: dataStatus,
-                        prepareBackup: prepareBackup,
-                        restoreBackup: { showingBackupImporter = true },
-                        confirmCloudRestore: {
-                            pendingRestore = $0
-                            showingRestoreConfirmation = true
+                    case .general:
+                        GeneralSettingsSections(model: model, updateManager: updateManager)
+                    case .appearance:
+                        Section {
+                            ThemePickerView().environment(model)
                         }
-                    )
-                case .advanced:
-                    AdvancedSettingsSection(model: model)
+                    case .integrations:
+                        ConnectionOverviewSection(model: model)
+                        DiscordSettingsSection(model: model, preferences: preferences)
+                        LastFMSettingsSection(
+                            model: model,
+                            preferences: preferences,
+                            disconnect: { showingDisconnectConfirmation = true }
+                        )
+                    case .players:
+                        PlaybackProviderSettingsSection(model: model, preferences: preferences)
+                    case .data:
+                        DataSettingsSections(
+                            model: model,
+                            preferences: preferences,
+                            dataStatus: dataStatus,
+                            prepareBackup: prepareBackup,
+                            restoreBackup: { showingBackupImporter = true },
+                            confirmCloudRestore: {
+                                pendingRestore = $0
+                                showingRestoreConfirmation = true
+                            }
+                        )
+                    case .advanced:
+                        AdvancedSettingsSection(model: model)
                     }
                 }
                 .formStyle(.grouped)

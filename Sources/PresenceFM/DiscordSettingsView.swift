@@ -19,7 +19,7 @@ struct DiscordSettingsSection: View {
             DisclosureGroup("Customize Rich Presence") {
                 profileControls
                 Picker("Activity style", selection: $preferences.discordActivityType) {
-                ForEach(DiscordActivityType.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(DiscordActivityType.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .accessibilityIdentifier("discord.activity-style")
                 .onChange(of: preferences.discordActivityType) { _, _ in refresh() }
