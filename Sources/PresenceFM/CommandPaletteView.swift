@@ -107,7 +107,7 @@ struct CommandPaletteView: View {
                 id: "demo", title: model.demoModeEnabled ? "End Demo Playback" : "Start Demo Playback",
                 detail: "Preview the Now Playing experience safely", group: "Action",
                 symbol: "testtube.2", keywords: "sample test music"
-            ) { model.setDemoModeEnabled(!model.demoModeEnabled) }
+            ) { model.setDemoModeEnabled(!model.demoModeEnabled) },
         ]
         if model.snapshot.track != nil {
             actions.append(

@@ -1206,6 +1206,73 @@ struct PersistenceAndQueueTests {
         let record = try #require(store.context.fetch(FetchDescriptor<ScrobbleRecord>()).first)
         #expect(record.state == .submitted)
     }
+
+    @Test func pendingQueueRejectsNewWorkAtHardLimit() throws {
+        let store = try PersistenceStore(inMemory: true)
+        for index in 0..<IntegrationPolicy.pendingQueueLimit {
+            let track = TrackMetadata(
+                identity: .init(persistentID: "pending-\(index)"), title: "T\(index)",
+                artist: "A", album: nil, duration: 100, source: .appleMusicCatalog,
+                appleMusicURL: nil, artworkReference: nil
+            )
+            let value = PlaybackSession(
+                id: UUID(), track: track, startedAt: Date(timeIntervalSince1970: Double(index)),
+                accumulatedPlayTime: 50, lastPosition: 50, eligibility: .eligible, outcome: .queued
+            )
+            switch store.enqueue(value) {
+            case .accepted, .warning, .duplicate:
+                break
+            case .rejected:
+                Issue.record("expected pending queue admission before hard limit")
+                return
+            }
+        }
+        guard case .rejected(let message) = store.enqueue(session(id: UUID())) else {
+            Issue.record("expected pending queue rejection at hard limit")
+            return
+        }
+        #expect(message.contains("queue is full"))
+        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == IntegrationPolicy.pendingQueueLimit)
+    }
+
+    @Test func permanentQueueRejectsNewWorkAtHardLimit() throws {
+        let store = try PersistenceStore(inMemory: true)
+        for index in 0..<IntegrationPolicy.permanentQueueLimit {
+            let track = TrackMetadata(
+                identity: .init(persistentID: "failed-\(index)"), title: "F\(index)",
+                artist: "A", album: nil, duration: 100, source: .appleMusicCatalog,
+                appleMusicURL: nil, artworkReference: nil
+            )
+            let value = PlaybackSession(
+                id: UUID(), track: track, startedAt: Date(timeIntervalSince1970: Double(index)),
+                accumulatedPlayTime: 50, lastPosition: 50, eligibility: .eligible, outcome: .queued
+            )
+            let admission = store.enqueue(value)
+            #expect(admission == .accepted || admission == .warning("The failed scrobble queue is approaching its 500-item limit."))
+            let title = "F\(index)"
+            let record = try #require(
+                store.context.fetch(FetchDescriptor<ScrobbleRecord>()).first(where: { $0.title == title })
+            )
+            record.state = .permanentlyFailed
+        }
+        store.save()
+        guard case .rejected(let message) = store.enqueue(session(id: UUID())) else {
+            Issue.record("expected permanent queue rejection at hard limit")
+            return
+        }
+        #expect(message.contains("need attention"))
+        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == IntegrationPolicy.permanentQueueLimit)
+    }
+
+    @Test func submittedScrobblesAreRemovedOnTheNextDrain() async throws {
+        let store = try PersistenceStore(inMemory: true)
+        store.enqueue(session())
+        let queue = ScrobbleQueue(store: store, client: SuccessfulSubmitter())
+        await queue.process()
+        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == 1)
+        await queue.process()
+        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == 0)
+    }
 }
 
 private actor SuccessfulSubmitter: ScrobbleSubmitting {
@@ -1525,6 +1592,21 @@ struct ServiceStatusCopyTests {
         #expect(IntegrationID.appleMusic.recoveryTitle == "Open Settings")
         #expect(IntegrationID.discord.recoveryTitle == "Reconnect")
         #expect(IntegrationID.lastFM.recoveryTitle == "Reconnect")
+    }
+
+    @Test func everyStatusHasOneCanonicalPresentationName() {
+        #expect(ServiceStatus.disabled.presentationLabel == "Disabled")
+        #expect(ServiceStatus.inactive.presentationLabel == "Not active")
+        #expect(ServiceStatus.awaitingPermission.presentationLabel == "Permission required")
+        #expect(ServiceStatus.connecting.presentationLabel == "Connecting")
+        #expect(ServiceStatus.connected.presentationLabel == "Connected")
+        #expect(ServiceStatus.offline.presentationLabel == "Offline")
+        #expect(ServiceStatus.authorizationExpired.presentationLabel == "Authorization expired")
+        #expect(ServiceStatus.failed("transport timeout").presentationLabel == "Needs attention")
+        #expect(ServiceStatus.failed("transport timeout").detailLabel == "transport timeout")
+        #expect(IntegrationID.youtubeMusic.recoveryTitle == "Reconnect")
+        #expect(IntegrationID.spotify.recoveryTitle == nil)
+        #expect(IntegrationID.tidal.recoveryTitle == nil)
     }
 }
 

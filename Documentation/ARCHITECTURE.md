@@ -34,3 +34,10 @@ Private Mode and Demo Mode prevent Discord and Last.fm publishing before payload
 ## Performance verification
 
 Provider calls are skipped once a higher-priority active source is selected, YouTube Music has its own slower request interval, and every poll emits an Instruments signpost. See [PERFORMANCE.md](PERFORMANCE.md) for budgets and the soak-test record.
+
+## Related contracts
+
+- [STATUS-COPY.md](STATUS-COPY.md) — canonical integration status and recovery language
+- [PERSISTENCE.md](PERSISTENCE.md) — schema, migration, and corrupt-store recovery
+- [CSV-V1.md](CSV-V1.md) — frozen listening-history export columns
+- [PROVIDERS.md](PROVIDERS.md) — supported playback provider matrix

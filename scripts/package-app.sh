@@ -17,7 +17,10 @@ rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$CONTENTS/Frameworks"
 cp "$BIN_DIR/PresenceFM" "$CONTENTS/MacOS/PresenceFM"
 cp -R "$BIN_DIR/Sparkle.framework" "$CONTENTS/Frameworks/Sparkle.framework"
-install_name_tool -add_rpath "@executable_path/../Frameworks" "$CONTENTS/MacOS/PresenceFM"
+# SwiftPM may already embed this rpath; only add it when missing.
+if ! otool -l "$CONTENTS/MacOS/PresenceFM" | grep -q '@executable_path/../Frameworks'; then
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$CONTENTS/MacOS/PresenceFM"
+fi
 cp "$ROOT/brand/PresenceFM.icns" "$CONTENTS/Resources/PresenceFM.icns"
 RESOURCE_BUNDLE="$BIN_DIR/PresenceFM_PresenceFM.bundle"
 [[ -n "$RESOURCE_BUNDLE" && -d "$RESOURCE_BUNDLE" ]] || {
@@ -47,14 +50,25 @@ plutil -insert SUAllowsAutomaticUpdates -bool true "$CONTENTS/Info.plist"
 plutil -insert PRESENCEFM_DISCORD_APPLICATION_ID -string "$DISCORD_APPLICATION_ID" "$CONTENTS/Info.plist"
 
 if [[ "${PRESENCEFM_SKIP_SIGNING:-0}" != "1" ]]; then
-    SIGNING_IDENTITY="${PRESENCEFM_SIGNING_IDENTITY:-}"
+  SIGNING_IDENTITY="${PRESENCEFM_SIGNING_IDENTITY:-}"
   if [[ -z "$SIGNING_IDENTITY" ]]; then
-    SIGNING_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -n 1)"
-    fi
-    ENTITLEMENTS_FILE="$(mktemp -t presencefm-entitlements).plist"
-    cp "$ROOT/Distribution.entitlements" "$ENTITLEMENTS_FILE"
-    if [[ -n "$SIGNING_IDENTITY" ]]; then
-    TEAM_IDENTIFIER="$(security find-certificate -c "$SIGNING_IDENTITY" -p 2>/dev/null | openssl x509 -noout -subject -nameopt RFC2253 2>/dev/null | sed -n 's/.*OU=\([^,]*\).*/\1/p' | head -n 1)"
+    SIGNING_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -n 1 || true)"
+  fi
+
+  ENTITLEMENTS_FILE="$(mktemp -t presencefm-entitlements).plist"
+  cp "$ROOT/Distribution.entitlements" "$ENTITLEMENTS_FILE"
+  trap 'rm -f "$ENTITLEMENTS_FILE"' EXIT
+
+  # Explicit ad-hoc: "-" or empty. CI always uses ad-hoc.
+  if [[ -z "$SIGNING_IDENTITY" || "$SIGNING_IDENTITY" == "-" ]]; then
+    # Ad-hoc signatures cannot use an iCloud key-value-store entitlement.
+    /usr/libexec/PlistBuddy -c "Delete :com.apple.developer.ubiquity-kvstore-identifier" "$ENTITLEMENTS_FILE" 2>/dev/null || true
+    codesign --force --deep --sign - "$CONTENTS/Frameworks/Sparkle.framework"
+    codesign --force --sign - --entitlements "$ENTITLEMENTS_FILE" "$APP"
+    codesign --verify --deep --strict --verbose=2 "$APP"
+    echo "Ad-hoc signed (no paid Apple Developer account required)"
+  else
+    TEAM_IDENTIFIER="$(security find-certificate -c "$SIGNING_IDENTITY" -p 2>/dev/null | openssl x509 -noout -subject -nameopt RFC2253 2>/dev/null | sed -n 's/.*OU=\([^,]*\).*/\1/p' | head -n 1 || true)"
     if [[ -n "$TEAM_IDENTIFIER" && "${PRESENCEFM_ENABLE_ICLOUD_SYNC:-0}" == "1" ]]; then
       /usr/libexec/PlistBuddy -c \
         "Set :com.apple.developer.ubiquity-kvstore-identifier $TEAM_IDENTIFIER.fm.presence.PresenceFM" \
@@ -69,16 +83,9 @@ if [[ "${PRESENCEFM_SKIP_SIGNING:-0}" != "1" ]]; then
       --sign "$SIGNING_IDENTITY" "$APP"
     codesign --verify --deep --strict --verbose=2 "$APP"
     echo "Signed with $SIGNING_IDENTITY"
-  else
-    # Ad-hoc signatures cannot use an iCloud key-value-store entitlement.
-    # Preferences remain available locally until an Apple-signed build is installed.
-    /usr/libexec/PlistBuddy -c "Delete :com.apple.developer.ubiquity-kvstore-identifier" "$ENTITLEMENTS_FILE" 2>/dev/null || true
-    codesign --force --deep --sign - "$CONTENTS/Frameworks/Sparkle.framework"
-    codesign --force --sign - --entitlements "$ENTITLEMENTS_FILE" "$APP"
-    codesign --verify --deep --strict --verbose=2 "$APP"
-    echo "Ad-hoc signed (no paid Apple Developer account required)"
   fi
   rm -f "$ENTITLEMENTS_FILE"
+  trap - EXIT
 fi
 
 echo "Created $APP"

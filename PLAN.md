@@ -81,7 +81,7 @@ to evolve. Version 1.0 is a stability milestone, not a feature-count milestone.
 
 ### Candidate 0.5.0 — reliability and testability
 
-- [-] Expand deterministic coverage for playback transitions, seeking,
+- [x] Expand deterministic coverage for playback transitions, seeking,
   cross-provider switching, scrobble-threshold boundaries, queue retries,
   retention, corrupted data, and every supported migration path.
 - [x] Introduce injectable clocks and service fakes where time or external app
@@ -100,11 +100,11 @@ to evolve. Version 1.0 is a stability milestone, not a feature-count milestone.
   settings, menu-bar controls, queue recovery, and listening-history filters;
   verify VoiceOver labels, focus order, reduced motion, contrast, and Dynamic
   Type equivalents available on macOS.
-- [ ] Make integration status and recovery language consistent across the menu,
+- [x] Make integration status and recovery language consistent across the menu,
   dashboard, settings, notifications, and diagnostics.
 - [x] Review first-run and single-integration onboarding so Discord-only,
   Last.fm-only, Apple Music-only, and Spotify-only setups have clear paths.
-- [ ] Measure polling, artwork caching, and dashboard update costs during long
+- [x] Measure polling, artwork caching, and dashboard update costs during long
   sessions; set and document practical idle/playing CPU, memory, launch-time,
   and energy budgets.
 - [x] Freeze the CSV export columns and meanings as a documented v1 format.

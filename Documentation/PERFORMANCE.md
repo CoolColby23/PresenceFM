@@ -23,8 +23,10 @@ at 2.105% average CPU and 117.7 MiB average resident memory, with 7.3% CPU and
 125.5 MiB peaks. A preceding run of the same feature snapshot measured
 1.273%/105.7 MiB, illustrating normal run-to-run variation. No accessibility
 automation ran concurrently. Demo Mode is not a substitute for normal
-account-backed playback; Instruments poll latency, launch-to-dashboard timing,
-and the four-hour soak remain release blockers.
+account-backed playback. Practical idle and playing budgets are established
+above; Instruments poll latency, launch-to-dashboard timing on more hardware,
+and the four-hour soak remain release blockers under the 1.0 gates rather than
+open budget-definition work.
 
 ## 1.0 release-candidate spot check
 
