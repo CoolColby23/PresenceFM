@@ -76,7 +76,7 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           test -n "$SPARKLE_PRIVATE_KEY"
-          APPCAST_TOOL="$(find .build/checkouts -type f -name generate_appcast -perm +111 -print -quit)"
+          APPCAST_TOOL="$(find .build/artifacts .build/checkouts -type f -name generate_appcast -perm +111 -print -quit 2>/dev/null)"
           test -x "$APPCAST_TOOL"
           mkdir appcast
           cp PresenceFM-*.dmg appcast/
