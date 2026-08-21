@@ -410,7 +410,7 @@ struct DiscordPresenceTests {
             let assets = try #require(payload["assets"] as? [String: String])
             let smallImage = try #require(assets["small_image"])
             #expect(URL(string: smallImage)?.scheme == "https")
-            #expect(smallImage.contains("coolcolby23.github.io/PresenceFM/assets/external-logos/"))
+            #expect(smallImage.contains("presence-fm.vercel.app/assets/external-logos/"))
             #expect(smallImage.hasSuffix(".png"))
         }
     }

@@ -2,9 +2,9 @@
 
 Deadline: **Tuesday, July 21, 2026 at 5:00 PM Pacific Time**.
 
-This page separates the work already prepared in the repository and on Devpost
-from the entrant-only steps that require Colby's identity, voice, or primary
-Codex session.
+This archived page records the public submission process used for the project.
+Personal declarations, account access, and session identifiers are intentionally
+not included in the repository.
 
 ## Already prepared
 
@@ -19,7 +19,7 @@ Codex session.
 - Project description, technology list, repository link, website link, and
   thumbnail on Devpost
 
-## Entrant-only steps
+## Submission steps used
 
 Complete these in order. When steps 1–4 are finished, send the four requested
 items listed under **Return to Codex** so Codex can populate and submit the final
@@ -47,7 +47,7 @@ Prepare the app before recording:
 2. Run:
 
    ```sh
-   cd /Users/colbycripps/Documents/GitHub/PresenceFM
+   cd /path/to/PresenceFM
    swift run PresenceFM --demo
    ```
 

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://coolcolby23.github.io/PresenceFM/sitemap.xml
+Sitemap: https://presence-fm.vercel.app/sitemap.xml

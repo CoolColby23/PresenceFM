@@ -26,7 +26,7 @@ enum PlaybackPlatform: String, Sendable, Codable, CaseIterable, Identifiable {
         case .youtubeMusic: fileName = "youtubemusic.png"
         case .tidal: fileName = "tidal.png"
         }
-        return "https://coolcolby23.github.io/PresenceFM/assets/external-logos/\(fileName)"
+        return "https://presence-fm.vercel.app/assets/external-logos/\(fileName)"
     }
 }
 

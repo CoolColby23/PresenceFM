@@ -2,7 +2,15 @@
 
 PresenceFM is a native macOS menu-bar app that reads current playback from Apple Music, Spotify, YouTube Music through YTMDesktop, or TIDAL, publishes optional Discord Rich Presence, and scrobbles qualified listens to Last.fm. It runs locally, starts private, and requires no PresenceFM account or backend.
 
-## OpenAI Build Week judge quickstart
+## Download
+
+- [Download the latest stable release](https://github.com/CoolColby23/PresenceFM/releases/latest)
+- [Try the v1.1.0-beta.1 pre-release](https://github.com/CoolColby23/PresenceFM/releases/tag/v1.1.0-beta.1)
+- Visit [presence-fm.vercel.app](https://presence-fm.vercel.app/) for the feature overview.
+
+Releases currently use ad-hoc signing. Follow the first-launch instructions under [Install](#install) after dragging PresenceFM to Applications.
+
+## Demo and OpenAI Build Week quickstart
 
 PresenceFM is entered in **Apps for Your Life**. Judges can exercise the real
 now-playing, scrobble-eligibility, and listening-history pipeline without music
@@ -24,8 +32,8 @@ See [Documentation/OPENAI-BUILD-WEEK.md](Documentation/OPENAI-BUILD-WEEK.md)
 for the problem statement, architecture, Codex/GPT-5.6 build notes, and judging
 path. The concise recording plan is in
 [Documentation/BUILD-WEEK-DEMO-SCRIPT.md](Documentation/BUILD-WEEK-DEMO-SCRIPT.md).
-Entrant-only video, identity, `/feedback`, and final-submit steps are in
-[Documentation/BUILD-WEEK-FINAL-SUBMISSION.md](Documentation/BUILD-WEEK-FINAL-SUBMISSION.md).
+The original submission checklist is retained in
+[Documentation/BUILD-WEEK-FINAL-SUBMISSION.md](Documentation/BUILD-WEEK-FINAL-SUBMISSION.md) as project history.
 
 ## Version 1.1
 

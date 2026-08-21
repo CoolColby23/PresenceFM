@@ -2,6 +2,8 @@
 
 ## 1.1.0 - Unreleased
 
+### 1.1.0-beta.1 - 2026-08-20
+
 - Improve Discord Rich Presence cover art: proxy external artwork through a stable image CDN, broaden Apple catalog matching, and upgrade insecure/HTTP artwork URLs.
 - Host updated platform badges (including the current Apple Music mark) on the project site for reliable Discord small-image loading.
 - Refresh the marketing website for v1.1 with production vs pre-release download channels.
