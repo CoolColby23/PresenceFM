@@ -25,10 +25,12 @@ actor CompanionStore {
     private var snapshot: CompanionSnapshot
 
     init(fileURL: URL? = nil) {
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("PresenceFMCompanion", isDirectory: true)
-        self.fileURL = fileURL ?? directory.appendingPathComponent("ledger.json")
-        if let data = try? Data(contentsOf: self.fileURL), let decoded = try? JSONDecoder.companion.decode(CompanionSnapshot.self, from: data) {
+        let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let currentURL = applicationSupport.appendingPathComponent("PresenceFM", isDirectory: true).appendingPathComponent("ledger.json")
+        let legacyURL = applicationSupport.appendingPathComponent("PresenceFMCompanion", isDirectory: true).appendingPathComponent("ledger.json")
+        self.fileURL = fileURL ?? currentURL
+        let readableURL = fileURL ?? ([currentURL, legacyURL].first { FileManager.default.isReadableFile(atPath: $0.path) } ?? currentURL)
+        if let data = try? Data(contentsOf: readableURL), let decoded = try? JSONDecoder.companion.decode(CompanionSnapshot.self, from: data) {
             snapshot = decoded
         } else {
             snapshot = .empty
@@ -103,7 +105,7 @@ actor CompanionStore {
 
     private func persist() throws {
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try JSONEncoder.pretty.encode(snapshot).write(to: fileURL, options: [.atomic, .completeFileProtection])
+        try JSONEncoder.pretty.encode(snapshot).write(to: fileURL, options: [.atomic, .completeFileProtectionUnlessOpen])
     }
 }
 

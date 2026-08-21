@@ -15,6 +15,19 @@ enum CompanionLastFMError: LocalizedError {
     }
 }
 
+struct CompanionLastFMTrack: Identifiable, Hashable, Sendable {
+    let title: String
+    let artist: String
+    let album: String?
+    let artworkURL: URL?
+    let playedAt: Date?
+    let isNowPlaying: Bool
+
+    var id: String {
+        "\(artist)|\(title)|\(playedAt?.timeIntervalSince1970 ?? 0)|\(isNowPlaying)"
+    }
+}
+
 actor CompanionLastFMClient {
     static let callbackURL = "https://presence-fm.vercel.app/lastfm-callback.html"
     private var credentials: CompanionLastFMCredentials
@@ -72,6 +85,43 @@ actor CompanionLastFMClient {
     }
 
     func username() async -> String? { await keychain.value(for: .lastFMUsername) }
+
+    func recentTracks(username: String, limit: Int = 50) async throws -> [CompanionLastFMTrack] {
+        let response = try await call(
+            method: "user.getRecentTracks",
+            parameters: ["user": username, "limit": String(limit), "extended": "0"],
+            sessionKey: nil)
+        guard let recent = response["recenttracks"] as? [String: Any] else {
+            throw CompanionLastFMError.invalidResponse
+        }
+        let rawTracks: [[String: Any]]
+        if let tracks = recent["track"] as? [[String: Any]] {
+            rawTracks = tracks
+        } else if let track = recent["track"] as? [String: Any] {
+            rawTracks = [track]
+        } else {
+            rawTracks = []
+        }
+        return rawTracks.compactMap { track -> CompanionLastFMTrack? in
+            guard let title = track["name"] as? String,
+                let artistObject = track["artist"] as? [String: Any],
+                let artist = artistObject["#text"] as? String
+            else { return nil }
+            let attributes = track["@attr"] as? [String: Any]
+            let dateObject = track["date"] as? [String: Any]
+            let timestamp = (dateObject?["uts"] as? String).flatMap(TimeInterval.init)
+            let images = track["image"] as? [[String: Any]]
+            let artwork = images?.reversed().compactMap { image -> URL? in
+                guard let raw = image["#text"] as? String, !raw.isEmpty else { return nil }
+                return URL(string: raw)
+            }.first
+            let album = (track["album"] as? [String: Any])?["#text"] as? String
+            return CompanionLastFMTrack(
+                title: title, artist: artist, album: album?.isEmpty == false ? album : nil,
+                artworkURL: artwork, playedAt: timestamp.map(Date.init(timeIntervalSince1970:)),
+                isNowPlaying: attributes?["nowplaying"] as? String == "true")
+        }
+    }
 
     func disconnect() async throws {
         try await keychain.set(nil, for: .lastFMSession); try await keychain.set(nil, for: .lastFMUsername)

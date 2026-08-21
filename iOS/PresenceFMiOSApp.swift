@@ -11,10 +11,15 @@ import SwiftUI
                 .onOpenURL { url in Task { await model.handleLastFMCallback(url) } }
         }
         .backgroundTask(.appRefresh("fm.presence.companion.refresh")) {
-            await model.reconcile(); await model.scheduleBackgroundRefresh()
+            await model.reconcile(reportErrors: false); await model.scheduleBackgroundRefresh()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active, model.isReadyForCapture { Task { await model.reconcile() } }
+            if phase == .active {
+                Task {
+                    await model.refreshLastFMHistory()
+                    if model.isReadyForCapture { await model.reconcile(reportErrors: false) }
+                }
+            }
         }
     }
 }

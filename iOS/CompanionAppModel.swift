@@ -14,6 +14,9 @@ final class CompanionAppModel {
     private(set) var cloudStatus = "Preparing"
     private(set) var hasLastFMCredentials = false
     private(set) var hasPendingLastFMAuthorization = false
+    private(set) var lastFMTracks: [CompanionLastFMTrack] = []
+    private(set) var isLoadingLastFMHistory = false
+    private(set) var captureIssue: String?
     var statusMessage: String?
     var presentedEditor: CanonicalListen?
     var diagnosticsURL: URL?
@@ -63,6 +66,7 @@ final class CompanionAppModel {
         }
         await source.beginNotifications { [weak self] in Task { @MainActor in await self?.captureNow() } }
         guard lastFMUsername != nil else { return }
+        await refreshLastFMHistory()
         if musicAuthorization == .authorized {
             do { try await establishBaselineAndReconcile() } catch { try? await store.log("reconcile", "Startup reconciliation deferred.") }
         }
@@ -85,10 +89,23 @@ final class CompanionAppModel {
             if lastNowPlayingID != listen.id { lastNowPlayingID = listen.id; try? await lastFM?.updateNowPlaying(listen.canonicalMetadata) }
             if listen.state == .queued { await submit(listen) }
             await reload()
-        } catch { show(error) }
+            captureIssue = nil
+        } catch {
+            captureIssue = friendlyDescription(for: error)
+            try? await store.log("capture", "Passive capture deferred: \(String(describing: type(of: error))).")
+        }
     }
 
-    func reconcile() async { do { try await establishBaselineAndReconcile() } catch { show(error) } }
+    func reconcile(reportErrors: Bool = true) async {
+        do {
+            try await establishBaselineAndReconcile()
+            captureIssue = nil
+        } catch {
+            captureIssue = friendlyDescription(for: error)
+            try? await store.log("reconcile", "Passive reconciliation deferred: \(String(describing: type(of: error))).")
+            if reportErrors { show(error) }
+        }
+    }
 
     func approve(_ listen: CanonicalListen) async {
         do {
@@ -164,11 +181,22 @@ final class CompanionAppModel {
             lastFMUsername = try await lastFM?.completeAuthorization()
             hasPendingLastFMAuthorization = false
             statusMessage = "Connected to Last.fm."
+            await refreshLastFMHistory()
             if musicAuthorization == .authorized { try await establishBaselineAndReconcile() }
             scheduleBackgroundRefresh()
             await drainQueue()
             startPolling()
         } catch { show(error) }
+    }
+    func refreshLastFMHistory() async {
+        guard let username = lastFMUsername, let lastFM, !isLoadingLastFMHistory else { return }
+        isLoadingLastFMHistory = true
+        defer { isLoadingLastFMHistory = false }
+        do {
+            lastFMTracks = try await lastFM.recentTracks(username: username)
+        } catch {
+            if lastFMTracks.isEmpty { show(error) }
+        }
     }
     func disconnectLastFM() async {
         do {
@@ -207,6 +235,7 @@ final class CompanionAppModel {
             do {
                 try await lastFM.scrobble(listen.canonicalMetadata); let date = Date()
                 try await cloud.complete(lease, result: .accepted(date)); try await store.setState(.submitted, for: listen.id, submittedAt: date)
+                await refreshLastFMHistory()
             } catch {
                 try? await cloud.complete(lease, result: .deferred("Submission failed; retry is required.")); try await store.setState(.queued, for: listen.id)
                 throw error
@@ -231,14 +260,18 @@ final class CompanionAppModel {
     }
     private func reload() async { snapshot = await store.current() }
     private func show(_ error: Error) {
-        if let description = (error as? LocalizedError)?.errorDescription, !description.isEmpty {
-            statusMessage = description
-        } else {
-            let description = (error as NSError).localizedDescription
-            statusMessage =
-                description == "The operation couldn’t be completed. (Swift.Error error 1.)"
-                ? "PresenceFM could not complete that action. Try again, then export diagnostics if it continues."
-                : description
+        statusMessage = friendlyDescription(for: error)
+    }
+    private func friendlyDescription(for error: Error) -> String {
+        if let description = (error as? LocalizedError)?.errorDescription,
+            !description.isEmpty, description != "Unknown error"
+        {
+            return description
         }
+        let description = (error as NSError).localizedDescription
+        if description == "Unknown error" || description == "The operation couldn’t be completed. (Swift.Error error 1.)" {
+            return "Apple Music history is temporarily unavailable. PresenceFM will retry automatically."
+        }
+        return description
     }
 }

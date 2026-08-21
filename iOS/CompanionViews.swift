@@ -10,8 +10,8 @@ struct CompanionRootView: View {
                 LastFMOnboardingView(model: model)
             } else {
                 TabView {
-                    NavigationStack { NowPlayingView(model: model) }.tabItem { Label("Now Playing", systemImage: "play.circle.fill") }
-                    NavigationStack { HistoryView(model: model) }.tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                    NavigationStack { LastFMHomeView(model: model) }.tabItem { Label("Scrobbles", systemImage: "waveform") }
+                    NavigationStack { HistoryView(model: model) }.tabItem { Label("Captured", systemImage: "music.note.list") }
                     NavigationStack { ReviewView(model: model) }.tabItem { Label("Review", systemImage: "tray.full.fill") }.badge(model.reviewItems.count)
                 }
             }
@@ -106,32 +106,42 @@ struct LastFMOnboardingView: View {
     }
 }
 
-struct NowPlayingView: View {
+struct LastFMHomeView: View {
     let model: CompanionAppModel
     var body: some View {
-        ScrollView {
-            VStack(spacing: 18) {
+        List {
+            Section {
+                LastFMAccountHeader(model: model)
+                    .listRowBackground(CompanionBrand.surface)
                 if model.musicAuthorization != .authorized {
-                    ContentUnavailableView(
-                        "Apple Music access needed", systemImage: "music.note", description: Text("PresenceFM reads the Music app's public playback state."))
-                    Button("Allow Music Access") { Task { await model.requestMusicAccess() } }.buttonStyle(.borderedProminent)
-                } else if let evidence = model.nowPlaying {
-                    CompanionBrandMark().frame(width: 76, height: 76)
-                    Text(evidence.originalMetadata.title).font(.title2.bold()).multilineTextAlignment(.center)
-                    Text(evidence.originalMetadata.artist).foregroundStyle(.secondary)
-                    ProgressView(value: progress(evidence)).tint(CompanionBrand.electricBlue)
-                    HStack {
-                        Label(evidence.confidence.rawValue.capitalized, systemImage: "waveform"); Spacer(); Text(duration(evidence.observedPlayTime ?? 0))
-                    }.font(.caption).foregroundStyle(.secondary)
+                    Button("Enable automatic Apple Music scrobbling") { Task { await model.requestMusicAccess() } }
                 } else {
-                    ContentUnavailableView(
-                        "Nothing playing", systemImage: "music.note",
-                        description: Text("Start a song in Apple Music. PresenceFM will observe it while iOS grants runtime."))
+                    Label("New Apple Music plays are scrobbled automatically", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.green)
                 }
-                CaptureHealthCard(model: model)
-            }.padding()
+                if let issue = model.captureIssue {
+                    Label(issue, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+            Section("Recent scrobbles") {
+                if model.isLoadingLastFMHistory, model.lastFMTracks.isEmpty {
+                    HStack {
+                        Spacer(); ProgressView(); Spacer()
+                    }
+                } else if model.lastFMTracks.isEmpty {
+                    ContentUnavailableView("No scrobbles yet", systemImage: "waveform", description: Text("Your Last.fm history will appear here."))
+                } else {
+                    ForEach(model.lastFMTracks) { track in LastFMTrackRow(track: track) }
+                }
+            }
         }
-        .navigationTitle("Now Playing")
+        .companionCanvas()
+        .listStyle(.insetGrouped)
+        .navigationTitle("Last.fm")
+        .refreshable { await model.refreshLastFMHistory() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
@@ -142,9 +152,48 @@ struct NowPlayingView: View {
             }
         }
     }
-    private func progress(_ evidence: PlaybackEvidence) -> Double {
-        guard let duration = evidence.originalMetadata.duration, duration > 0 else { return 0 };
-        return min(1, (evidence.observedPlayTime ?? 0) / min(duration * 0.5, 240))
+}
+
+struct LastFMAccountHeader: View {
+    let model: CompanionAppModel
+    var body: some View {
+        HStack(spacing: 14) {
+            CompanionBrandMark().frame(width: 54, height: 54)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.lastFMUsername ?? "Last.fm").font(.title2.bold())
+                if let current = model.lastFMTracks.first(where: \.isNowPlaying) {
+                    Text("Listening to \(current.title)").font(.subheadline).foregroundStyle(CompanionBrand.secondaryText).lineLimit(1)
+                } else {
+                    Text("Your listening history").font(.subheadline).foregroundStyle(CompanionBrand.secondaryText)
+                }
+            }
+        }.padding(.vertical, 6)
+    }
+}
+
+struct LastFMTrackRow: View {
+    let track: CompanionLastFMTrack
+    var body: some View {
+        HStack(spacing: 12) {
+            AsyncImage(url: track.artworkURL) { phase in
+                if let image = phase.image { image.resizable().scaledToFill() } else { CompanionBrandMark().padding(8) }
+            }
+            .frame(width: 48, height: 48)
+            .background(CompanionBrand.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(track.title).font(.headline).lineLimit(1)
+                Text(track.artist).foregroundStyle(.secondary).lineLimit(1)
+                if let album = track.album { Text(album).font(.caption).foregroundStyle(CompanionBrand.secondaryText).lineLimit(1) }
+            }
+            Spacer()
+            if track.isNowPlaying {
+                Image(systemName: "waveform").foregroundStyle(CompanionBrand.signalCyan).accessibilityLabel("Now playing")
+            } else if let date = track.playedAt {
+                Text(date, style: .relative).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -178,7 +227,7 @@ struct HistoryView: View {
             }
         }
         .companionCanvas()
-        .navigationTitle("History")
+        .navigationTitle("Captured Plays")
     }
 }
 
