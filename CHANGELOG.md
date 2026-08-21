@@ -2,6 +2,13 @@
 
 ## 1.1.0 - Unreleased
 
+### 1.1.0-beta.2 - 2026-08-20
+
+- Move the website and Discord platform-badge URLs to the canonical Vercel deployment.
+- Replace third-party demonstration cover art with owned PresenceFM artwork and fictional metadata.
+- Add public contributor templates, dependency updates, pinned Actions, and repository security guidance.
+- Bound queue-capacity tests so CI validates hard limits without quadratic test runtimes.
+
 ### 1.1.0-beta.1 - 2026-08-20
 
 - Improve Discord Rich Presence cover art: proxy external artwork through a stable image CDN, broaden Apple catalog matching, and upgrade insecure/HTTP artwork URLs.
