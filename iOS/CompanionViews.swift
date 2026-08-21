@@ -16,7 +16,8 @@ struct CompanionRootView: View {
                 }
             }
         }
-        .tint(.pink)
+        .tint(CompanionBrand.electricBlue)
+        .background(CompanionBrand.canvas.ignoresSafeArea())
         .alert("PresenceFM", isPresented: Binding(get: { model.statusMessage != nil }, set: { if !$0 { model.statusMessage = nil } })) {
             Button("OK") { model.statusMessage = nil }
         } message: {
@@ -36,12 +37,8 @@ struct LastFMOnboardingView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    Image("PresenceFMBrandIcon")
-                        .resizable()
-                        .scaledToFit()
+                    CompanionBrandMark()
                         .frame(width: 112, height: 112)
-                        .clipShape(RoundedRectangle(cornerRadius: 24))
-                        .shadow(color: .pink.opacity(0.25), radius: 20, y: 8)
                     VStack(spacing: 8) {
                         Text("Connect Last.fm").font(.largeTitle.bold())
                         Text(
@@ -49,15 +46,23 @@ struct LastFMOnboardingView: View {
                                 ? "Your API credentials are saved. Finish by authorizing your Last.fm account."
                                 : "Add your own Last.fm API application once, then authorize your account."
                         )
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CompanionBrand.secondaryText)
                         .multilineTextAlignment(.center)
                     }
                     if model.hasLastFMCredentials {
                         Button("Authorize with Last.fm") { Task { await model.connectLastFM() } }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.large)
+                        if model.hasPendingLastFMAuthorization {
+                            Button("I've Authorized — Finish Connection") { Task { await model.finishLastFMConnection() } }
+                                .buttonStyle(.bordered)
+                            Text("If Last.fm leaves the browser open after approval, return here and tap Finish Connection.")
+                                .font(.caption)
+                                .foregroundStyle(CompanionBrand.secondaryText)
+                                .multilineTextAlignment(.center)
+                        }
                         Button("Use Different API Credentials") { Task { await model.clearLastFMCredentials() } }
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(CompanionBrand.secondaryText)
                     } else {
                         VStack(spacing: 12) {
                             TextField("API key", text: $apiKey)
@@ -89,14 +94,14 @@ struct LastFMOnboardingView: View {
                         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20))
                     }
                     Link("Create a Last.fm API application", destination: URL(string: "https://www.last.fm/api/account/create")!)
-                    Text("Set its callback URL to presencefm://lastfm-auth. Credentials stay in this iPhone's Keychain.")
+                    Text("Set its callback URL to presencefm://lastfm-auth for automatic return. Credentials stay in this iPhone's Keychain.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CompanionBrand.secondaryText)
                         .multilineTextAlignment(.center)
                 }
                 .padding(24)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(CompanionBrand.canvas.ignoresSafeArea())
         }
     }
 }
@@ -111,10 +116,10 @@ struct NowPlayingView: View {
                         "Apple Music access needed", systemImage: "music.note", description: Text("PresenceFM reads the Music app's public playback state."))
                     Button("Allow Music Access") { Task { await model.requestMusicAccess() } }.buttonStyle(.borderedProminent)
                 } else if let evidence = model.nowPlaying {
-                    Image(systemName: "music.note.list").font(.system(size: 64)).foregroundStyle(.pink)
+                    CompanionBrandMark().frame(width: 76, height: 76)
                     Text(evidence.originalMetadata.title).font(.title2.bold()).multilineTextAlignment(.center)
                     Text(evidence.originalMetadata.artist).foregroundStyle(.secondary)
-                    ProgressView(value: progress(evidence)).tint(.pink)
+                    ProgressView(value: progress(evidence)).tint(CompanionBrand.electricBlue)
                     HStack {
                         Label(evidence.confidence.rawValue.capitalized, systemImage: "waveform"); Spacer(); Text(duration(evidence.observedPlayTime ?? 0))
                     }.font(.caption).foregroundStyle(.secondary)
@@ -152,7 +157,7 @@ struct CaptureHealthCard: View {
             LabeledContent("iCloud", value: model.cloudStatus)
             LabeledContent("Queued", value: String(model.history.filter { $0.state == .queued }.count))
             if model.snapshot.privateMode { Label("Private Mode is active", systemImage: "eye.slash.fill").foregroundStyle(.orange) }
-        }.padding().background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        }.padding().background(CompanionBrand.surface, in: RoundedRectangle(cornerRadius: 18))
     }
 }
 
@@ -166,10 +171,14 @@ struct HistoryView: View {
             }
             ForEach(model.history) { listen in
                 ListenRow(listen: listen).swipeActions {
-                    if listen.state == .failed || listen.state == .queued { Button("Retry") { Task { await model.approve(listen) } }.tint(.pink) }
+                    if listen.state == .failed || listen.state == .queued {
+                        Button("Retry") { Task { await model.approve(listen) } }.tint(CompanionBrand.electricBlue)
+                    }
                 }
             }
-        }.navigationTitle("History")
+        }
+        .companionCanvas()
+        .navigationTitle("History")
     }
 }
 
@@ -191,6 +200,7 @@ struct ReviewView: View {
                     }
             }
         }
+        .companionCanvas()
         .navigationTitle("Review")
         .toolbar {
             if !model.reviewItems.isEmpty {
@@ -237,7 +247,7 @@ struct ListenRow: View {
         case .submitted: .green;
         case .review: .orange;
         case .failed: .red;
-        default: .pink
+        default: CompanionBrand.electricBlue
         }
     }
 }
@@ -273,6 +283,7 @@ struct CompanionSettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
+        .companionCanvas()
         .navigationTitle("Settings")
         .toolbar(.hidden, for: .tabBar)
     }

@@ -41,6 +41,22 @@ actor CompanionLastFMClient {
         return url
     }
 
+    func acceptCallback(_ url: URL) throws {
+        guard url.scheme?.lowercased() == "presencefm",
+            url.host?.lowercased() == "lastfm-auth"
+        else { throw CompanionLastFMError.invalidResponse }
+        if let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+            .first(where: { $0.name == "token" })?.value,
+            !token.isEmpty
+        {
+            UserDefaults.standard.set(token, forKey: "PresenceFMLastFMAuthToken")
+        }
+    }
+
+    func hasPendingAuthorization() -> Bool {
+        UserDefaults.standard.string(forKey: "PresenceFMLastFMAuthToken")?.isEmpty == false
+    }
+
     func completeAuthorization() async throws -> String {
         guard let token = UserDefaults.standard.string(forKey: "PresenceFMLastFMAuthToken") else { throw CompanionLastFMError.unauthorized }
         let response = try await call(method: "auth.getSession", parameters: ["token": token], sessionKey: nil)
@@ -58,6 +74,7 @@ actor CompanionLastFMClient {
 
     func disconnect() async throws {
         try await keychain.set(nil, for: .lastFMSession); try await keychain.set(nil, for: .lastFMUsername)
+        UserDefaults.standard.removeObject(forKey: "PresenceFMLastFMAuthToken")
     }
 
     func updateNowPlaying(_ metadata: ScrobbleMetadata) async throws {

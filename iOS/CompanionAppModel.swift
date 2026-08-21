@@ -1,4 +1,3 @@
-import AuthenticationServices
 import BackgroundTasks
 import Foundation
 import MusicKit
@@ -14,6 +13,7 @@ final class CompanionAppModel {
     private(set) var musicAuthorization = MusicAuthorization.currentStatus
     private(set) var cloudStatus = "Preparing"
     private(set) var hasLastFMCredentials = false
+    private(set) var hasPendingLastFMAuthorization = false
     var statusMessage: String?
     var presentedEditor: CanonicalListen?
     var diagnosticsURL: URL?
@@ -26,7 +26,6 @@ final class CompanionAppModel {
     private var cloud: CloudSubmissionCoordinator?
     private var pollTask: Task<Void, Never>?
     private var lastNowPlayingID: String?
-    private var authenticationSession: ASWebAuthenticationSession?
 
     var history: [CanonicalListen] {
         snapshot.listens.filter { $0.state != .dismissed }.sorted {
@@ -49,6 +48,7 @@ final class CompanionAppModel {
         let credentials = await storedLastFMCredentials()
         hasLastFMCredentials = credentials.isConfigured
         let lastFM = CompanionLastFMClient(credentials: credentials, keychain: keychain); self.lastFM = lastFM
+        hasPendingLastFMAuthorization = await lastFM.hasPendingAuthorization()
         let cloud = CloudSubmissionCoordinator(
             containerIdentifier: configuration.cloudContainerIdentifier, deviceID: deviceID, localOnly: !configuration.isCloudConfigured
         ) { [keychain] in await keychain.value(for: .lastFMUsername) }
@@ -114,22 +114,17 @@ final class CompanionAppModel {
         guard let lastFM else { return }
         do {
             let url = try await lastFM.authorizationURL()
-            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "presencefm") { [weak self] callbackURL, error in
-                Task { @MainActor in
-                    guard let self else { return }
-                    if let error {
-                        if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin { self.show(error) }
-                        return
-                    }
-                    guard callbackURL?.scheme == "presencefm" else {
-                        self.statusMessage = "Last.fm did not return to PresenceFM. Check the callback URL for your API application."
-                        return
-                    }
-                    await self.finishLastFMConnection()
-                }
-            }
-            session.prefersEphemeralWebBrowserSession = true; session.presentationContextProvider = WebAuthenticationAnchor.shared
-            authenticationSession = session; session.start()
+            hasPendingLastFMAuthorization = true
+            await UIApplication.shared.open(url)
+        } catch { show(error) }
+    }
+
+    func handleLastFMCallback(_ url: URL) async {
+        guard let lastFM else { return }
+        do {
+            try await lastFM.acceptCallback(url)
+            hasPendingLastFMAuthorization = true
+            await finishLastFMConnection()
         } catch { show(error) }
     }
 
@@ -167,6 +162,7 @@ final class CompanionAppModel {
     func finishLastFMConnection() async {
         do {
             lastFMUsername = try await lastFM?.completeAuthorization()
+            hasPendingLastFMAuthorization = false
             statusMessage = "Connected to Last.fm."
             if musicAuthorization == .authorized { try await establishBaselineAndReconcile() }
             scheduleBackgroundRefresh()
@@ -174,7 +170,11 @@ final class CompanionAppModel {
             startPolling()
         } catch { show(error) }
     }
-    func disconnectLastFM() async { do { try await lastFM?.disconnect(); lastFMUsername = nil } catch { show(error) } }
+    func disconnectLastFM() async {
+        do {
+            try await lastFM?.disconnect(); lastFMUsername = nil; hasPendingLastFMAuthorization = false
+        } catch { show(error) }
+    }
     func exportDiagnostics() async { do { diagnosticsURL = try await store.diagnosticsExport() } catch { show(error) } }
 
     func scheduleBackgroundRefresh() {
@@ -240,12 +240,5 @@ final class CompanionAppModel {
                 ? "PresenceFM could not complete that action. Try again, then export diagnostics if it continues."
                 : description
         }
-    }
-}
-
-final class WebAuthenticationAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {
-    static let shared = WebAuthenticationAnchor()
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows).first { $0.isKeyWindow } ?? ASPresentationAnchor()
     }
 }

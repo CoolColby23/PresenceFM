@@ -30,6 +30,8 @@ jobs:
         run: ./scripts/verify-swift-format.sh
       - name: Test
         run: swift test --enable-code-coverage
+      - name: Verify iOS companion
+        run: ./scripts/verify-ios-companion.sh
       - name: Report code coverage
         run: |
           PROFILE="$(find .build -name default.profdata -print -quit)"

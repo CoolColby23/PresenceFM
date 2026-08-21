@@ -5,12 +5,16 @@ import SwiftUI
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
-        WindowGroup { CompanionRootView(model: model).task { await model.start() } }
-            .backgroundTask(.appRefresh("fm.presence.companion.refresh")) {
-                await model.reconcile(); await model.scheduleBackgroundRefresh()
-            }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active, model.isReadyForCapture { Task { await model.reconcile() } }
-            }
+        WindowGroup {
+            CompanionRootView(model: model)
+                .task { await model.start() }
+                .onOpenURL { url in Task { await model.handleLastFMCallback(url) } }
+        }
+        .backgroundTask(.appRefresh("fm.presence.companion.refresh")) {
+            await model.reconcile(); await model.scheduleBackgroundRefresh()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, model.isReadyForCapture { Task { await model.reconcile() } }
+        }
     }
 }
