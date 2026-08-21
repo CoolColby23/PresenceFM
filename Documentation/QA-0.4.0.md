@@ -62,4 +62,7 @@ of these are implied passes:
 - The complete sleep/wake, launch-at-login, notification, keyboard, and VoiceOver matrix.
 
 These remain follow-up compatibility and accessibility work under
-`Documentation/MANUAL-QA.md`.
+`Documentation/MANUAL-QA.md` and the 1.0 release gates in
+`Documentation/QA-1.0.0-RC.md`. Issue #1 is closed against this accepted-risk
+record; remaining live provider and permission checks are tracked by #6, #11,
+and the 1.0 QA matrix rather than blocking the already-published 0.4.0 tag.

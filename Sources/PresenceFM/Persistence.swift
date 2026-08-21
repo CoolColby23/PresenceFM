@@ -95,7 +95,9 @@ enum PresenceFMSchemaV1: VersionedSchema {
         var outcomeLabel: String {
             switch SessionOutcome(rawValue: outcomeRaw) {
             case .played, .queued, .submitted: "Played"
+            case .listened: "Listened"
             case .skipped: "Skipped"
+            case .interrupted: "Interrupted"
             case .failed: "Failed"
             case .active: "Playing"
             case nil: outcomeRaw.capitalized
@@ -119,7 +121,10 @@ enum PresenceFMSchemaV1: VersionedSchema {
         init(session: PlaybackSession, now: Date = .now) {
             id = UUID(); duplicateKey = session.duplicateKey
             title = session.track.title; artist = session.track.artist; album = session.track.album
-            startedAt = session.startedAt; duration = session.track.duration
+            startedAt = session.startedAt
+            // A zero duration is the queue's durable signal for Apple Music Radio:
+            // the Last.fm client omits unknown duration and marks it as radio-selected.
+            duration = session.track.isAppleMusicRadio ? 0 : session.track.duration
             attempts = 0; nextAttemptAt = now; stateRaw = QueueState.pending.rawValue
         }
 
@@ -185,8 +190,23 @@ enum QueueAdmission: Equatable {
 
 @MainActor
 final class PersistenceStore {
+    struct QueueLimits {
+        let pendingWarning: Int
+        let pendingLimit: Int
+        let permanentWarning: Int
+        let permanentLimit: Int
+
+        static let production = QueueLimits(
+            pendingWarning: IntegrationPolicy.pendingQueueWarning,
+            pendingLimit: IntegrationPolicy.pendingQueueLimit,
+            permanentWarning: IntegrationPolicy.permanentQueueWarning,
+            permanentLimit: IntegrationPolicy.permanentQueueLimit
+        )
+    }
+
     let container: ModelContainer
     let isInMemory: Bool
+    private let queueLimits: QueueLimits
     var context: ModelContext { container.mainContext }
     private(set) var lastError: PersistenceError?
     var onError: ((PersistenceError) -> Void)?
@@ -194,9 +214,11 @@ final class PersistenceStore {
     init(
         inMemory: Bool = false,
         storeURL: URL? = nil,
-        legacyStoreURL: URL? = nil
+        legacyStoreURL: URL? = nil,
+        queueLimits: QueueLimits = .production
     ) throws {
         isInMemory = inMemory
+        self.queueLimits = queueLimits
         let schema = Schema(versionedSchema: PresenceFMSchemaV1.self)
         let resolvedStoreURL: URL?
         let configuration: ModelConfiguration
@@ -220,8 +242,19 @@ final class PersistenceStore {
 
     func record(_ session: PlaybackSession, artworkData: Data? = nil) {
         context.insert(ActivityRecord(session: session, artworkData: artworkData))
-        trim(ActivityRecord.self, limit: IntegrationPolicy.activityRecordLimit, sort: [SortDescriptor(\.startedAt, order: .reverse)])
+        trim(ActivityRecord.self, limit: IntegrationPolicy.activityRecordLimit, oldestFirst: [SortDescriptor(\.startedAt)])
         removeActivity(olderThanDays: Preferences.shared.historyRetentionDays)
+        save()
+    }
+
+    func backfillArtwork(for persistentID: String, artworkData: Data) {
+        let descriptor = FetchDescriptor<ActivityRecord>(
+            predicate: #Predicate { $0.persistentID == persistentID }
+        )
+        guard let records = try? context.fetch(descriptor) else { return }
+        let missingArtwork = records.filter { $0.artworkData == nil }
+        guard !missingArtwork.isEmpty else { return }
+        missingArtwork.forEach { $0.artworkData = artworkData }
         save()
     }
 
@@ -229,6 +262,16 @@ final class PersistenceStore {
         guard let records = try? context.fetch(FetchDescriptor<ActivityRecord>()) else { return }
         records.forEach(context.delete)
         save()
+    }
+
+    @discardableResult
+    func clearDemoActivity() -> Int {
+        guard let records = try? context.fetch(FetchDescriptor<ActivityRecord>()) else { return 0 }
+        let demoRecords = records.filter { DemoPlaybackSequence.contains(persistentID: $0.persistentID) }
+        guard !demoRecords.isEmpty else { return 0 }
+        demoRecords.forEach(context.delete)
+        save()
+        return demoRecords.count
     }
 
     func applyHistoryRetention(days: Int) {
@@ -242,20 +285,28 @@ final class PersistenceStore {
         let descriptor = FetchDescriptor<ScrobbleRecord>(predicate: #Predicate { $0.duplicateKey == key })
         guard (try? context.fetchCount(descriptor)) == 0 else { return .duplicate }
 
-        let all = (try? context.fetch(FetchDescriptor<ScrobbleRecord>())) ?? []
-        let pending = all.filter { $0.state == .pending || $0.state == .retrying }.count
-        let permanent = all.filter { $0.state == .permanentlyFailed }.count
-        if pending >= IntegrationPolicy.pendingQueueLimit {
+        let pendingRaw = QueueState.pending.rawValue
+        let retryingRaw = QueueState.retrying.rawValue
+        let permanentRaw = QueueState.permanentlyFailed.rawValue
+        let pendingDescriptor = FetchDescriptor<ScrobbleRecord>(
+            predicate: #Predicate { $0.stateRaw == pendingRaw || $0.stateRaw == retryingRaw }
+        )
+        let permanentDescriptor = FetchDescriptor<ScrobbleRecord>(
+            predicate: #Predicate { $0.stateRaw == permanentRaw }
+        )
+        let pending = (try? context.fetchCount(pendingDescriptor)) ?? 0
+        let permanent = (try? context.fetchCount(permanentDescriptor)) ?? 0
+        if pending >= queueLimits.pendingLimit {
             return rejectQueue("Scrobble queue is full. Reconnect Last.fm or remove queued items before new listens can be queued.")
         }
-        if permanent >= IntegrationPolicy.permanentQueueLimit {
+        if permanent >= queueLimits.permanentLimit {
             return rejectQueue("Too many scrobbles need attention. Retry or remove failed items before new listens can be queued.")
         }
         context.insert(ScrobbleRecord(session: session, now: now)); save()
-        if pending + 1 == IntegrationPolicy.pendingQueueWarning {
+        if pending + 1 == queueLimits.pendingWarning {
             return .warning("The offline scrobble queue is approaching its 5,000-item limit.")
         }
-        if permanent == IntegrationPolicy.permanentQueueWarning {
+        if permanent == queueLimits.permanentWarning {
             return .warning("The failed scrobble queue is approaching its 500-item limit.")
         }
         return .accepted
@@ -280,9 +331,35 @@ final class PersistenceStore {
         save()
     }
 
+    @discardableResult
+    func correctScrobble(
+        id: UUID,
+        title: String,
+        artist: String,
+        album: String?,
+        now: Date = .now
+    ) -> Bool {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty, !cleanArtist.isEmpty else { return false }
+        let descriptor = FetchDescriptor<ScrobbleRecord>(predicate: #Predicate { $0.id == id })
+        guard let record = try? context.fetch(descriptor).first,
+              record.state == .permanentlyFailed else { return false }
+        record.title = cleanTitle
+        record.artist = cleanArtist
+        let cleanAlbum = album?.trimmingCharacters(in: .whitespacesAndNewlines)
+        record.album = cleanAlbum?.isEmpty == false ? cleanAlbum : nil
+        record.state = .pending
+        record.attempts = 0
+        record.nextAttemptAt = now
+        record.lastError = nil
+        save()
+        return true
+    }
+
     func log(_ category: String, _ message: String) {
         context.insert(DiagnosticRecord(category: category, message: Redactor.redact(message)))
-        trim(DiagnosticRecord.self, limit: IntegrationPolicy.diagnosticRecordLimit, sort: [SortDescriptor(\.timestamp, order: .reverse)])
+        trim(DiagnosticRecord.self, limit: IntegrationPolicy.diagnosticRecordLimit, oldestFirst: [SortDescriptor(\.timestamp)])
         save()
     }
 
@@ -295,7 +372,7 @@ final class PersistenceStore {
         if let latest = try? context.fetch(descriptor).first,
            latest.stateRaw == state.rawValue { return }
         context.insert(IntegrationHealthEvent(integration: integration, state: state, timestamp: timestamp))
-        trim(IntegrationHealthEvent.self, limit: IntegrationPolicy.healthEventLimit, sort: [SortDescriptor(\.timestamp, order: .reverse)])
+        trim(IntegrationHealthEvent.self, limit: IntegrationPolicy.healthEventLimit, oldestFirst: [SortDescriptor(\.timestamp)])
         save()
     }
 
@@ -334,10 +411,17 @@ final class PersistenceStore {
         return .rejected(message)
     }
 
-    private func trim<T: PersistentModel>(_ type: T.Type, limit: Int, sort: [SortDescriptor<T>]) {
-        let descriptor = FetchDescriptor<T>(sortBy: sort)
-        guard let records = try? context.fetch(descriptor), records.count > limit else { return }
-        records.dropFirst(limit).forEach(context.delete)
+    private func trim<T: PersistentModel>(
+        _ type: T.Type,
+        limit: Int,
+        oldestFirst: [SortDescriptor<T>]
+    ) {
+        let countDescriptor = FetchDescriptor<T>()
+        guard let count = try? context.fetchCount(countDescriptor), count > limit else { return }
+        var overflowDescriptor = FetchDescriptor<T>(sortBy: oldestFirst)
+        overflowDescriptor.fetchLimit = count - limit
+        guard let overflow = try? context.fetch(overflowDescriptor) else { return }
+        overflow.forEach(context.delete)
     }
 
     private func removeActivity(olderThanDays days: Int) {

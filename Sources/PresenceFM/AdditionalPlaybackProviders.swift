@@ -138,17 +138,29 @@ actor YTMDesktopClient {
               let id = video["id"] as? String else { throw YTMDesktopError.invalidResponse }
         let position = (player["videoProgress"] as? NSNumber)?.doubleValue ?? 0
         let isLive = video["isLive"] as? Bool ?? false
+        let thumbnailURL = Self.bestThumbnailURL(from: video)
         let track = TrackMetadata(
             identity: .init(persistentID: "youtube:\(id)"), title: title, artist: artist,
             album: video["album"] as? String, duration: duration,
-            source: isLive ? .unsupportedStream : .appleMusicCatalog,
+            source: isLive ? .radioStream : .appleMusicCatalog,
             appleMusicURL: URL(string: "https://music.youtube.com/watch?v=\(id)"),
-            artworkReference: nil, platform: .youtubeMusic
+            artworkReference: thumbnailURL.map(ArtworkReference.remote), platform: .youtubeMusic
         )
         return PlaybackSnapshot(
             track: track, state: state == 1 ? .playing : .paused, position: position,
             observedAt: observedAt, confidence: .high
         )
+    }
+
+    nonisolated private static func bestThumbnailURL(from video: [String: Any]) -> URL? {
+        if let thumbnails = video["thumbnails"] as? [[String: Any]] {
+            return thumbnails.reversed().compactMap { ($0["url"] as? String).flatMap(URL.init(string:)) }.first
+        }
+        if let thumbnail = video["thumbnail"] as? String { return URL(string: thumbnail) }
+        if let thumbnail = video["thumbnail"] as? [String: Any], let value = thumbnail["url"] as? String {
+            return URL(string: value)
+        }
+        return nil
     }
 
     private func post(_ path: String, body: [String: String], timeout: TimeInterval = 4) async throws -> [String: Any] {
@@ -205,12 +217,13 @@ enum TidalNowPlayingProvider {
         let position = (info["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? NSNumber)?.doubleValue ?? 0
         let rate = (info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? NSNumber)?.doubleValue ?? 0
         let identifier = info["kMRMediaRemoteNowPlayingInfoUniqueIdentifier"] as? String ?? "\(artist)|\(title)|\(duration)"
+        let artworkReference = (info["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data).map(ArtworkReference.embedded)
         let track = TrackMetadata(
             identity: .init(persistentID: "tidal:\(identifier)"), title: title, artist: artist,
             album: info["kMRMediaRemoteNowPlayingInfoAlbum"] as? String, duration: duration,
             source: .appleMusicCatalog,
             appleMusicURL: URL(string: "https://listen.tidal.com/search?q=\("\(artist) \(title)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"),
-            artworkReference: nil, platform: .tidal
+            artworkReference: artworkReference, platform: .tidal
         )
         return PlaybackSnapshot(track: track, state: rate > 0 ? .playing : .paused, position: position, observedAt: .now, confidence: .high)
     }

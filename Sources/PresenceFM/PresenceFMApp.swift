@@ -7,15 +7,17 @@ import UserNotifications
 struct PresenceFMApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model: AppModel
+    @State private var updateManager = UpdateManager()
 
     init() {
+        let launchInDemoMode = CommandLine.arguments.contains("--demo")
         do {
             let store = try PersistenceStore()
-            _model = State(initialValue: AppModel(store: store))
+            _model = State(initialValue: AppModel(store: store, launchInDemoMode: launchInDemoMode))
         } catch {
             do {
                 let store = try PersistenceStore(inMemory: true)
-                let fallback = AppModel(store: store)
+                let fallback = AppModel(store: store, launchInDemoMode: launchInDemoMode)
                 fallback.usingTemporaryStore = true
                 fallback.persistenceIssue = "PresenceFM could not open its local database. It is running with temporary data so the original store remains untouched. \(Redactor.redact(error.localizedDescription))"
                 _model = State(initialValue: fallback)
@@ -27,13 +29,21 @@ struct PresenceFMApp: App {
 
     var body: some Scene {
         WindowGroup("PresenceFM", id: "dashboard") {
-            DashboardView().environment(model).tint(BrandColors.electricBlue)
+            ThemedSceneRoot(preferences: model.preferences) {
+                DashboardView()
+                    .environment(model)
+                    .environment(updateManager)
+            }
         }
             .defaultSize(width: 980, height: 680)
             .modelContainer(model.store.container)
 
         MenuBarExtra {
-            MenuBarView().environment(model)
+            ThemedSceneRoot(preferences: model.preferences) {
+                MenuBarControlCenterView()
+                    .environment(model)
+                    .modelContainer(model.store.container)
+            }
         } label: {
             MenuBarBrandMark()
                 .frame(width: 18, height: 18)
@@ -41,8 +51,84 @@ struct PresenceFMApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Settings { SettingsView().environment(model).tint(BrandColors.electricBlue).frame(minWidth: 620, minHeight: 520) }
+        Settings {
+            ThemedSceneRoot(preferences: model.preferences) {
+                SettingsView()
+                    .environment(model)
+                    .environment(updateManager)
+                    .frame(minWidth: 780, minHeight: 560)
+            }
+        }
             .modelContainer(model.store.container)
+
+        .commands {
+            PresenceFMCommands(model: model)
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updateManager.checkForUpdates() }
+            }
+        }
+    }
+}
+
+private struct PresenceFMCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+    let model: AppModel
+
+    var body: some Commands {
+        CommandMenu("Navigate") {
+            Button("Quick Open…") {
+                model.commandPalettePresented = true
+                NSApp.showDashboard(using: openWindow)
+            }
+            .keyboardShortcut("k", modifiers: .command)
+
+            Divider()
+
+            ForEach(Array(DashboardSection.allCases.enumerated()), id: \.element.id) { index, section in
+                Button(section.title) {
+                    model.navigate(to: section)
+                    NSApp.showDashboard(using: openWindow)
+                }
+                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+            }
+
+            Divider()
+
+            if model.isPrivate {
+                Button("End Private Mode") { model.endPrivateMode() }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+            } else {
+                Button("Go Private Until Resumed") { model.setPrivate(until: nil) }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+            }
+        }
+    }
+}
+
+extension NSApplication {
+    func showDashboard(using openWindow: OpenWindowAction) {
+        if let dashboard = windows.first(where: { $0.identifier?.rawValue.contains("dashboard") == true }) {
+            dashboard.makeKeyAndOrderFront(nil)
+            dashboard.orderFrontRegardless()
+        } else {
+            openWindow(id: "dashboard")
+        }
+        activate(ignoringOtherApps: true)
+    }
+}
+
+private struct ThemedSceneRoot<Content: View>: View {
+    let preferences: Preferences
+    @ViewBuilder let content: Content
+    @Environment(\.colorScheme) private var systemColorScheme
+
+    var body: some View {
+        let resolvedScheme = preferences.appearanceMode.preferredColorScheme ?? systemColorScheme
+        let theme = preferences.theme(for: resolvedScheme)
+        content
+            .environment(\.appTheme, theme)
+            .preferredColorScheme(preferences.appearanceMode.preferredColorScheme)
+            .tint(theme.primaryColor)
     }
 }
 

@@ -44,4 +44,5 @@ final class NotificationCoordinator {
 
 extension Notification.Name {
     static let presenceFMOpenSection = Notification.Name("PresenceFMOpenSection")
+    static let presenceFMPrivateModeIntent = Notification.Name("PresenceFMPrivateModeIntent")
 }

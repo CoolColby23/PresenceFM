@@ -19,7 +19,22 @@ belong in `CHANGELOG.md`, while detailed release verification belongs in
 Status notation: `[ ]` planned, `[-]` in progress or partially verified, and
 `[x]` complete.
 
-## Current release — 0.4.0
+## Current release candidate — 1.0.0
+
+The repository and website are prepared for a 1.0.0 release candidate. Automated
+tests, release packaging, website verification, keyboard navigation, recovery
+copy, and destructive-action safeguards are in place. The account-, OS-,
+hardware-, accessibility-, and soak-dependent checks are tracked explicitly in
+`Documentation/QA-1.0.0-RC.md`; 1.0 must not be published until each item passes
+or is accepted and documented by the maintainer.
+
+- [x] Use one repository version source for local builds and pull-request package checks.
+- [x] Add CI verification and GitHub Pages deployment for the dependency-free website.
+- [x] Add keyboard shortcuts for primary navigation and Private Mode.
+- [x] Add confirmations for queued-scrobble removal and Last.fm disconnection.
+- [-] Complete and record the remaining 1.0 manual QA matrix.
+
+## Previous release — 0.4.0
 
 PresenceFM 0.4.0 ships the integration, reliability, and distribution work
 listed below. Account-, OS-range-, and hardware-dependent checks that could not
@@ -66,7 +81,7 @@ to evolve. Version 1.0 is a stability milestone, not a feature-count milestone.
 
 ### Candidate 0.5.0 — reliability and testability
 
-- [-] Expand deterministic coverage for playback transitions, seeking,
+- [x] Expand deterministic coverage for playback transitions, seeking,
   cross-provider switching, scrobble-threshold boundaries, queue retries,
   retention, corrupted data, and every supported migration path.
 - [x] Introduce injectable clocks and service fakes where time or external app
@@ -85,11 +100,11 @@ to evolve. Version 1.0 is a stability milestone, not a feature-count milestone.
   settings, menu-bar controls, queue recovery, and listening-history filters;
   verify VoiceOver labels, focus order, reduced motion, contrast, and Dynamic
   Type equivalents available on macOS.
-- [ ] Make integration status and recovery language consistent across the menu,
+- [x] Make integration status and recovery language consistent across the menu,
   dashboard, settings, notifications, and diagnostics.
 - [x] Review first-run and single-integration onboarding so Discord-only,
   Last.fm-only, Apple Music-only, and Spotify-only setups have clear paths.
-- [ ] Measure polling, artwork caching, and dashboard update costs during long
+- [x] Measure polling, artwork caching, and dashboard update costs during long
   sessions; set and document practical idle/playing CPU, memory, launch-time,
   and energy budgets.
 - [x] Freeze the CSV export columns and meanings as a documented v1 format.
@@ -146,8 +161,8 @@ These are candidates, not commitments.
 - Optional shortcuts or system actions for Private Mode and common recovery
   tasks.
 - Localization after the interface copy and accessibility labels stabilize.
-- A contributor-friendly mock playback mode for testing without changing a real
-  Apple Music session.
+- [x] Add a contributor- and judge-friendly demo playback mode for testing the
+  real local pipeline without a music account or external publishing.
 - Developer ID signing and notarization if sustainable funding or sponsorship
   becomes available; this is not a v1 blocker while the current risk is clearly
   documented.

@@ -4,6 +4,7 @@
 xcuserdata/
 DerivedData/
 *.xcuserstate
+*.profraw
 Local.xcconfig
 Secrets.xcconfig
 PresenceFM.app/

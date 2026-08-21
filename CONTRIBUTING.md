@@ -20,4 +20,28 @@ request so it remains useful to someone who only pulls the repository.
 
 Tags matching `v*` build a draft GitHub release. The Discord application ID has a public bundled default and does not require a repository secret.
 
+| Tag shape | Channel | GitHub | Sparkle appcast |
+|-----------|---------|--------|-----------------|
+| `v1.1.0` | Production | Draft → publish as Latest | Generated and attached |
+| `v1.1.0-beta.1` / `v1.1.0-rc.1` | Pre-release | Draft → publish as Pre-release | Skipped |
+
+`VERSION` must match the tag base (for example tag `v1.1.0-beta.1` requires `VERSION` `1.1.0`).
+
 The workflow creates an ad-hoc signed draft and requires no Apple Developer secrets. This is the expected free-account release path; verify the documented Control-click first-launch flow before publishing it.
+
+### Cut a pre-release
+
+```sh
+git checkout main   # or the release branch after merge
+git tag v1.1.0-beta.1
+git push origin v1.1.0-beta.1
+# Review the draft on GitHub, then publish as Pre-release
+```
+
+### Cut production
+
+```sh
+git tag v1.1.0
+git push origin v1.1.0
+# Review the draft (includes appcast.xml), then publish as Latest
+```

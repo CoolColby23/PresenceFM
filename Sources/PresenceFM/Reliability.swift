@@ -32,9 +32,10 @@ struct ClosureAppClock: AppClock {
 }
 
 enum IntegrationPolicy {
-    static let playingPollInterval: TimeInterval = 0.5
+    static let playingPollInterval: TimeInterval = 1
     static let idlePollInterval: TimeInterval = 2
     static let youtubePollInterval: TimeInterval = 5
+    static let providerHealthRefreshInterval: TimeInterval = 15
     static let scrobbleWorkerInterval: TimeInterval = 30
     static let scrobbleRetryMaximum: TimeInterval = 3_600
     static let lastFMTimeout: TimeInterval = 20
@@ -63,13 +64,28 @@ enum PlaybackProviderID: String, Codable, CaseIterable, Sendable, Identifiable {
         case .tidal: "TIDAL"
         }
     }
+
+    var moveEarlierAccessibilityLabel: String { "Move \(displayName) earlier" }
+    var moveLaterAccessibilityLabel: String { "Move \(displayName) later" }
 }
 
 enum ProviderHealth: Sendable, Equatable {
+    case disabled
     case available
     case inactive
     case permissionRequired
     case unavailable(String)
+}
+
+struct PlaybackPollMetrics: Sendable, Equatable {
+    let totalDuration: TimeInterval
+    let providerDurations: [PlaybackProviderID: TimeInterval]
+}
+
+struct PlaybackMonitorUpdate: Sendable {
+    let playback: PlaybackSnapshot
+    let providerHealth: [PlaybackProviderID: ProviderHealth]
+    let metrics: PlaybackPollMetrics
 }
 
 struct ProviderSnapshot: Sendable {
@@ -87,13 +103,18 @@ protocol PlaybackProvider: Sendable {
 actor PlaybackCoordinator {
     private var activeProvider: PlaybackProviderID?
 
-    func select(_ snapshots: [ProviderSnapshot], now: Date = .now) -> PlaybackSnapshot {
+    func select(
+        _ snapshots: [ProviderSnapshot],
+        priority: [PlaybackProviderID] = PlaybackProviderID.allCases,
+        now: Date = .now
+    ) -> PlaybackSnapshot {
         let byProvider = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.provider, $0) })
-        let ordered = PlaybackProviderID.allCases.compactMap { byProvider[$0] }
+        let ordered = PlaybackProviderID.normalizedOrder(priority).compactMap { byProvider[$0] }
 
         if let activeProvider,
-           let active = byProvider[activeProvider]?.playback,
-           active.state == .playing {
+            let active = byProvider[activeProvider]?.playback,
+            active.state == .playing
+        {
             return active
         }
         if let selected = ordered.compactMap(\.playback).first(where: { $0.state == .playing }) {
@@ -101,8 +122,9 @@ actor PlaybackCoordinator {
             return selected
         }
         if let activeProvider,
-           let active = byProvider[activeProvider]?.playback,
-           active.state == .paused {
+            let active = byProvider[activeProvider]?.playback,
+            active.state == .paused
+        {
             return active
         }
         if let selected = ordered.compactMap(\.playback).first(where: { $0.state == .paused }) {
@@ -129,6 +151,13 @@ actor PlaybackCoordinator {
     }
 }
 
+extension PlaybackProviderID {
+    static func normalizedOrder(_ values: [PlaybackProviderID]) -> [PlaybackProviderID] {
+        var seen: Set<PlaybackProviderID> = []
+        return (values + allCases).filter { seen.insert($0).inserted }
+    }
+}
+
 enum IntegrationID: String, Codable, CaseIterable, Sendable, Identifiable {
     case appleMusic, spotify, youtubeMusic, tidal, discord, lastFM
     var id: Self { self }
@@ -146,11 +175,24 @@ enum IntegrationID: String, Codable, CaseIterable, Sendable, Identifiable {
 }
 
 enum IntegrationState: String, Codable, Sendable {
-    case disabled, connecting, connected, offline, permissionRequired, authorizationExpired, failed
+    case disabled, inactive, connecting, connected, offline, permissionRequired, authorizationExpired, failed
 }
 
 enum RecoveryAction: String, Codable, Sendable {
     case openAutomationSettings, reconnectDiscord, reconnectLastFM, reconnectYouTubeMusic
+}
+
+extension IntegrationID {
+    var recoveryTitle: String? {
+        switch self {
+        case .appleMusic: "Open Settings"
+        case .spotify: nil
+        case .discord: "Reconnect"
+        case .lastFM: "Reconnect"
+        case .youtubeMusic: "Reconnect"
+        case .tidal: nil
+        }
+    }
 }
 
 struct IntegrationHealth: Sendable, Identifiable {

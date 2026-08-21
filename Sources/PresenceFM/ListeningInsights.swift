@@ -3,6 +3,7 @@ import Foundation
 enum HistoryOutcomeFilter: String, CaseIterable, Identifiable {
     case all = "All"
     case played = "Played"
+    case listened = "Listened"
     case skipped = "Skipped"
     var id: Self { self }
 }
@@ -24,7 +25,12 @@ enum HistoryPeriod: String, CaseIterable, Identifiable {
     }
 
     var dayCount: Int? {
-        switch self { case .week: 7; case .month: 30; case .quarter: 90; case .all: nil }
+        switch self {
+        case .week: 7;
+        case .month: 30;
+        case .quarter: 90;
+        case .all: nil
+        }
     }
 }
 
@@ -51,14 +57,14 @@ struct ListeningSummary {
     @MainActor
     init(records: [ActivityRecord], now: Date = .now, calendar: Calendar = .current) {
         total = records.count
-        played = records.filter { $0.outcomeLabel == "Played" }.count
+        played = records.filter(\.countsAsListen).count
         skipped = records.filter { $0.outcomeLabel == "Skipped" }.count
         let seconds = records.reduce(0.0) { partial, record in
             partial + max(0, record.listenedTime ?? (record.outcomeLabel == "Played" ? record.duration ?? 0 : 0))
         }
         listeningMinutes = Int((seconds / 60).rounded())
 
-        let playedRecords = records.filter { $0.outcomeLabel == "Played" }
+        let playedRecords = records.filter(\.countsAsListen)
         let groupedArtists: [String: [ActivityRecord]] = Dictionary(grouping: playedRecords) { $0.artist }
         var artistCounts: [ArtistPlayCount] = groupedArtists.map { entry in
             ArtistPlayCount(artist: entry.key, plays: entry.value.count)
@@ -70,7 +76,7 @@ struct ListeningSummary {
         topArtists = Array(artistCounts.prefix(5))
 
         let start = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -6, to: now) ?? now)
-        let grouped = Dictionary(grouping: records.filter { $0.startedAt >= start && $0.outcomeLabel == "Played" }) {
+        let grouped = Dictionary(grouping: records.filter { $0.startedAt >= start && $0.countsAsListen }) {
             calendar.startOfDay(for: $0.startedAt)
         }
         dailyCounts = (0..<7).compactMap { offset in
@@ -116,6 +122,56 @@ struct PlatformListenCount: Identifiable, Equatable {
     var id: String { platform }
 }
 
+struct WeeklyListeningRecap: Equatable {
+    let listens: Int
+    let minutes: Int
+    let uniqueArtists: Int
+    let topArtist: String?
+    let topTrack: String?
+    let topAlbum: String?
+    let topPlatform: String?
+    let busiestDay: String?
+
+    @MainActor
+    init(records: [ActivityRecord], now: Date = .now, calendar: Calendar = .current) {
+        let start = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -6, to: now) ?? now)
+        let played = records.filter { $0.startedAt >= start && $0.startedAt <= now && $0.countsAsListen }
+        listens = played.count
+        let seconds = played.reduce(0.0) {
+            $0 + max(0, $1.listenedTime ?? $1.trackDuration ?? $1.duration ?? 0)
+        }
+        minutes = Int((seconds / 60).rounded())
+        uniqueArtists = Set(played.map { $0.artist.localizedLowercase }).count
+        topArtist = Self.mostFrequent(played.map(\.artist))
+        topTrack = Self.mostFrequent(played.map { "\($0.title) — \($0.artist)" })
+        topAlbum = Self.mostFrequent(played.compactMap(\.album).filter { !$0.isEmpty })
+        topPlatform = Self.mostFrequent(played.compactMap(\.platformRaw))
+        let dayFormatter = DateFormatter()
+        dayFormatter.locale = .current
+        dayFormatter.setLocalizedDateFormatFromTemplate("EEEE")
+        let groupedDays = Dictionary(grouping: played) { calendar.startOfDay(for: $0.startedAt) }
+        busiestDay = groupedDays.max {
+            if $0.value.count != $1.value.count { return $0.value.count < $1.value.count }
+            return $0.key > $1.key
+        }.map { dayFormatter.string(from: $0.key) }
+    }
+
+    var shareText: String {
+        var parts = ["My PresenceFM week: \(listens) listens, \(minutes) minutes, \(uniqueArtists) artists."]
+        if let topArtist { parts.append("Top artist: \(topArtist).") }
+        if let topTrack { parts.append("Top track: \(topTrack).") }
+        if let busiestDay { parts.append("Busiest day: \(busiestDay).") }
+        return parts.joined(separator: " ")
+    }
+
+    private static func mostFrequent(_ values: [String]) -> String? {
+        Dictionary(grouping: values, by: { $0 }).max {
+            if $0.value.count != $1.value.count { return $0.value.count < $1.value.count }
+            return $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedDescending
+        }?.key
+    }
+}
+
 struct ExtendedListeningInsights {
     let comparison: MetricComparison
     let topTracks: [RankedListen]
@@ -129,13 +185,19 @@ struct ExtendedListeningInsights {
         let current = records.filter { record in currentStart.map { record.startedAt >= $0 } ?? true }
         let previous: [ActivityRecord]?
         if let days = period.dayCount,
-           let start = currentStart,
-           let previousStart = calendar.date(byAdding: .day, value: -days, to: start) {
+            let start = currentStart,
+            let previousStart = calendar.date(byAdding: .day, value: -days, to: start)
+        {
             previous = records.filter { $0.startedAt >= previousStart && $0.startedAt < start }
-        } else { previous = nil }
-        comparison = MetricComparison(current: Self.metrics(current), previous: previous.map(Self.metrics))
+        } else {
+            previous = nil
+        }
+        comparison = MetricComparison(
+            current: Self.metrics(current),
+            previous: previous.flatMap { $0.isEmpty ? nil : Self.metrics($0) }
+        )
 
-        let played = current.filter { $0.outcomeLabel == "Played" }
+        let played = current.filter(\.countsAsListen)
         topTracks = Self.rank(played) { ($0.title, $0.artist) }
         topAlbums = Self.rank(played.filter { $0.album?.isEmpty == false }) { ($0.album ?? "Unknown Album", $0.artist) }
         let byHour = Dictionary(grouping: played) { calendar.component(.hour, from: $0.startedAt) }
@@ -146,7 +208,7 @@ struct ExtendedListeningInsights {
     }
 
     @MainActor private static func metrics(_ records: [ActivityRecord]) -> ListeningMetrics {
-        let played = records.filter { $0.outcomeLabel == "Played" }
+        let played = records.filter(\.countsAsListen)
         let skipped = records.filter { $0.outcomeLabel == "Skipped" }
         let total = played.count + skipped.count
         let seconds = records.reduce(0.0) { $0 + max(0, $1.listenedTime ?? ($1.outcomeLabel == "Played" ? ($1.trackDuration ?? $1.duration ?? 0) : 0)) }
@@ -160,7 +222,9 @@ struct ExtendedListeningInsights {
     @MainActor private static func rank(
         _ records: [ActivityRecord], key: (ActivityRecord) -> (String, String?)
     ) -> [RankedListen] {
-        let grouped = Dictionary(grouping: records) { let value = key($0); return "\(value.0)|\(value.1 ?? "")" }
+        let grouped = Dictionary(grouping: records) {
+            let value = key($0); return "\(value.0)|\(value.1 ?? "")"
+        }
         return grouped.compactMap { _, values in
             guard let first = values.first else { return nil }
             let value = key(first)
@@ -172,6 +236,10 @@ struct ExtendedListeningInsights {
         }
         .prefix(5).map { $0 }
     }
+}
+
+private extension ActivityRecord {
+    var countsAsListen: Bool { outcomeLabel == "Played" || outcomeLabel == "Listened" }
 }
 
 enum HistoryCSVExporter {
@@ -186,7 +254,7 @@ enum HistoryCSVExporter {
                 "1", record.id.uuidString, formatter.string(from: record.startedAt),
                 record.finalizedAt.map(formatter.string) ?? "", record.title, record.artist,
                 record.album ?? "", record.platformRaw ?? "Unknown platform", record.outcomeLabel,
-                duration, listenedTime, record.persistentID ?? ""
+                duration, listenedTime, record.persistentID ?? "",
             ]
             rows.append(fields.map { csvField($0) }.joined(separator: ","))
         }

@@ -11,10 +11,10 @@ enum DiagnosticReport {
             "App: \(appVersion)",
             "macOS: \(osVersion)",
             "Playback platform: \(playbackPlatform)",
-            "Playback: \(musicStatus.label)",
-            "Discord: \(discordStatus.label)",
-            "Last.fm: \(lastFMStatus.label)",
-            "YTMDesktop: \(ytmDesktopStatus.label)",
+            "Playback: \(musicStatus.presentationLabel)",
+            "Discord: \(discordStatus.presentationLabel)",
+            "Last.fm: \(lastFMStatus.presentationLabel)",
+            "YTMDesktop: \(ytmDesktopStatus.presentationLabel)",
             "",
             "Recent redacted log:"
         ]

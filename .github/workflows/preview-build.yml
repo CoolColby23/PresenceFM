@@ -1,0 +1,56 @@
+name: Preview Build
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build preview (macOS)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: "26.0"
+
+      - name: Show environment
+        run: |
+          sw_vers
+          swift --version
+          cat VERSION
+
+      - name: Test
+        run: swift test
+
+      - name: Package app
+        env:
+          PRESENCEFM_VERSION: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('preview-{0}', github.run_number) }}
+          PRESENCEFM_BUILD_NUMBER: ${{ github.run_number }}
+          PRESENCEFM_SIGNING_IDENTITY: "-"
+          PRESENCEFM_SKIP_SIGNING: "0"
+        run: ./scripts/package-app.sh
+
+      - name: Create DMG
+        env:
+          PRESENCEFM_VERSION: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('preview-{0}', github.run_number) }}
+        run: ./scripts/create-dmg.sh "${PRESENCEFM_VERSION}"
+
+      - name: Upload preview DMG
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: preview-dmg
+          path: |
+            PresenceFM-*.dmg
+            PresenceFM-*.sha256
+          if-no-files-found: error
+          retention-days: 14

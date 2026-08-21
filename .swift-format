@@ -1,0 +1,12 @@
+{
+  "indentation": {
+    "spaces": 4
+  },
+  "lineLength": 160,
+  "respectsExistingLineBreaks": true,
+  "rules": {
+    "DoNotUseSemicolons": false,
+    "OrderedImports": true
+  },
+  "version": 1
+}

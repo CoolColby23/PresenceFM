@@ -5,9 +5,13 @@ let package = Package(
     name: "PresenceFM",
     platforms: [.macOS(.v15)],
     products: [.executable(name: "PresenceFM", targets: ["PresenceFM"])],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.2")
+    ],
     targets: [
         .executableTarget(
             name: "PresenceFM",
+            dependencies: [.product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/PresenceFM",
             resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
@@ -15,7 +19,12 @@ let package = Package(
         .testTarget(
             name: "PresenceFMTests",
             dependencies: ["PresenceFM"],
-            path: "Tests/PresenceFMTests"
-        )
+            path: "Tests/PresenceFMTests",
+            linkerSettings: [
+                // SwiftPM does not add its binary-framework output directory to
+                // test bundles that depend on an executable target.
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../.."])
+            ]
+        ),
     ]
 )

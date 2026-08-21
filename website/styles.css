@@ -32,6 +32,11 @@ a {
   text-decoration: none;
 }
 
+:focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 4px;
+}
+
 button,
 a {
   font: inherit;
@@ -98,6 +103,10 @@ a {
   border: 0;
   color: white;
   cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Buttons */
@@ -403,6 +412,51 @@ section {
   color: var(--mist);
 }
 
+.platform-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.platform-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--mist);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.platform-chip img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.release-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.release-highlights {
+  margin-top: 0;
+}
+
+.release-card code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  color: var(--cyan);
+}
+
 /* Privacy */
 
 .privacy {
@@ -451,10 +505,17 @@ section {
   letter-spacing: -0.03em;
 }
 
-.release-heading time {
+.release-heading time,
+.release-status {
   color: var(--mist);
   font-size: 13px;
   white-space: nowrap;
+}
+
+.release-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
 }
 
 .release-card ul {
@@ -575,6 +636,13 @@ footer > p {
   .button {
     transition: none;
   }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 /* Tablet */
@@ -630,6 +698,10 @@ footer > p {
 
   .feature-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .release-grid {
+    grid-template-columns: 1fr;
   }
 
   footer {
