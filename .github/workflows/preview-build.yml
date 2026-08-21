@@ -1,9 +1,6 @@
 name: Preview Build
 
 on:
-  push:
-    branches:
-      - 'preview/**'
   pull_request:
     branches:
       - main
@@ -12,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: preview-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
