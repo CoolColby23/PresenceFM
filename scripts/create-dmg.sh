@@ -8,8 +8,15 @@ DMG="$ROOT/PresenceFM-${VERSION}.dmg"
 WORK="$(mktemp -d)"
 STAGING="$WORK/contents"
 RW_DMG="$WORK/PresenceFM-rw.dmg"
+MOUNT_POINT=""
 mkdir -p "$STAGING"
-trap 'rm -rf "$WORK"' EXIT
+cleanup() {
+  if [[ -n "$MOUNT_POINT" ]] && mount | grep -Fq " on $MOUNT_POINT "; then
+    hdiutil detach -quiet -force "$MOUNT_POINT" >/dev/null 2>&1 || true
+  fi
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
 
 [[ -d "$APP" ]] || { echo "PresenceFM.app is missing; run scripts/package-app.sh first." >&2; exit 1; }
 
@@ -48,6 +55,17 @@ end tell
 APPLESCRIPT
 
 sync
-hdiutil detach -quiet "$MOUNT_POINT"
+for attempt in {1..5}; do
+  if hdiutil detach -quiet "$MOUNT_POINT"; then
+    MOUNT_POINT=""
+    break
+  fi
+  if [[ "$attempt" -eq 5 ]]; then
+    hdiutil detach -quiet -force "$MOUNT_POINT"
+    MOUNT_POINT=""
+    break
+  fi
+  sleep "$attempt"
+done
 hdiutil convert -quiet "$RW_DMG" -format UDZO -o "$DMG"
 echo "Created $DMG"
