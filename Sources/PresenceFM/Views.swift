@@ -211,7 +211,7 @@ struct NowPlayingView: View {
         .presenceCard(elevated: true)
         .presenceHeroGlow(active: model.snapshot.state == .playing)
         .environment(\.colorScheme, .dark)
-        .animation(.easeInOut(duration: 0.28), value: currentTrackID)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: currentTrackID)
     }
 
     private var emptyHeroSection: some View {

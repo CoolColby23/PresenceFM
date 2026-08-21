@@ -43,7 +43,7 @@ plutil -insert LSMinimumSystemVersion -string 15.0 "$CONTENTS/Info.plist"
 plutil -insert NSAppleEventsUsageDescription -string "PresenceFM reads the track currently playing in Apple Music. It does not control playback or modify your library." "$CONTENTS/Info.plist"
 plutil -insert NSHumanReadableCopyright -string "PresenceFM contributors" "$CONTENTS/Info.plist"
 plutil -insert SUFeedURL -string "https://github.com/CoolColby23/PresenceFM/releases/latest/download/appcast.xml" "$CONTENTS/Info.plist"
-plutil -insert SUPublicEDKey -string "NAio4ba6lGI+Or7NZiCwfkF0NXkixmZjkAvesHK2zGY=" "$CONTENTS/Info.plist"
+plutil -insert SUPublicEDKey -string "EBdOJMgejwIvsRqKDYymh1sKKNyr/e+W3XpeJyJ/cvE=" "$CONTENTS/Info.plist"
 plutil -insert SUEnableAutomaticChecks -bool true "$CONTENTS/Info.plist"
 plutil -insert SUAllowsAutomaticUpdates -bool true "$CONTENTS/Info.plist"
 

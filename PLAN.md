@@ -96,7 +96,7 @@ to evolve. Version 1.0 is a stability milestone, not a feature-count milestone.
 
 ### Candidate 0.6.0 — product and accessibility polish
 
-- [ ] Add accessibility and keyboard-navigation checks for onboarding,
+- [x] Add accessibility and keyboard-navigation checks for onboarding,
   settings, menu-bar controls, queue recovery, and listening-history filters;
   verify VoiceOver labels, focus order, reduced motion, contrast, and Dynamic
   Type equivalents available on macOS.
