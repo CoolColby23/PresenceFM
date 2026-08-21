@@ -190,8 +190,23 @@ enum QueueAdmission: Equatable {
 
 @MainActor
 final class PersistenceStore {
+    struct QueueLimits {
+        let pendingWarning: Int
+        let pendingLimit: Int
+        let permanentWarning: Int
+        let permanentLimit: Int
+
+        static let production = QueueLimits(
+            pendingWarning: IntegrationPolicy.pendingQueueWarning,
+            pendingLimit: IntegrationPolicy.pendingQueueLimit,
+            permanentWarning: IntegrationPolicy.permanentQueueWarning,
+            permanentLimit: IntegrationPolicy.permanentQueueLimit
+        )
+    }
+
     let container: ModelContainer
     let isInMemory: Bool
+    private let queueLimits: QueueLimits
     var context: ModelContext { container.mainContext }
     private(set) var lastError: PersistenceError?
     var onError: ((PersistenceError) -> Void)?
@@ -199,9 +214,11 @@ final class PersistenceStore {
     init(
         inMemory: Bool = false,
         storeURL: URL? = nil,
-        legacyStoreURL: URL? = nil
+        legacyStoreURL: URL? = nil,
+        queueLimits: QueueLimits = .production
     ) throws {
         isInMemory = inMemory
+        self.queueLimits = queueLimits
         let schema = Schema(versionedSchema: PresenceFMSchemaV1.self)
         let resolvedStoreURL: URL?
         let configuration: ModelConfiguration
@@ -268,20 +285,28 @@ final class PersistenceStore {
         let descriptor = FetchDescriptor<ScrobbleRecord>(predicate: #Predicate { $0.duplicateKey == key })
         guard (try? context.fetchCount(descriptor)) == 0 else { return .duplicate }
 
-        let all = (try? context.fetch(FetchDescriptor<ScrobbleRecord>())) ?? []
-        let pending = all.filter { $0.state == .pending || $0.state == .retrying }.count
-        let permanent = all.filter { $0.state == .permanentlyFailed }.count
-        if pending >= IntegrationPolicy.pendingQueueLimit {
+        let pendingRaw = QueueState.pending.rawValue
+        let retryingRaw = QueueState.retrying.rawValue
+        let permanentRaw = QueueState.permanentlyFailed.rawValue
+        let pendingDescriptor = FetchDescriptor<ScrobbleRecord>(
+            predicate: #Predicate { $0.stateRaw == pendingRaw || $0.stateRaw == retryingRaw }
+        )
+        let permanentDescriptor = FetchDescriptor<ScrobbleRecord>(
+            predicate: #Predicate { $0.stateRaw == permanentRaw }
+        )
+        let pending = (try? context.fetchCount(pendingDescriptor)) ?? 0
+        let permanent = (try? context.fetchCount(permanentDescriptor)) ?? 0
+        if pending >= queueLimits.pendingLimit {
             return rejectQueue("Scrobble queue is full. Reconnect Last.fm or remove queued items before new listens can be queued.")
         }
-        if permanent >= IntegrationPolicy.permanentQueueLimit {
+        if permanent >= queueLimits.permanentLimit {
             return rejectQueue("Too many scrobbles need attention. Retry or remove failed items before new listens can be queued.")
         }
         context.insert(ScrobbleRecord(session: session, now: now)); save()
-        if pending + 1 == IntegrationPolicy.pendingQueueWarning {
+        if pending + 1 == queueLimits.pendingWarning {
             return .warning("The offline scrobble queue is approaching its 5,000-item limit.")
         }
-        if permanent == IntegrationPolicy.permanentQueueWarning {
+        if permanent == queueLimits.permanentWarning {
             return .warning("The failed scrobble queue is approaching its 500-item limit.")
         }
         return .accepted

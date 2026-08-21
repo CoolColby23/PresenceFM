@@ -1208,8 +1208,12 @@ struct PersistenceAndQueueTests {
     }
 
     @Test func pendingQueueRejectsNewWorkAtHardLimit() throws {
-        let store = try PersistenceStore(inMemory: true)
-        for index in 0..<IntegrationPolicy.pendingQueueLimit {
+        let limit = 5
+        let store = try PersistenceStore(
+            inMemory: true,
+            queueLimits: .init(pendingWarning: 4, pendingLimit: limit, permanentWarning: 4, permanentLimit: 5)
+        )
+        for index in 0..<limit {
             let track = TrackMetadata(
                 identity: .init(persistentID: "pending-\(index)"), title: "T\(index)",
                 artist: "A", album: nil, duration: 100, source: .appleMusicCatalog,
@@ -1232,12 +1236,16 @@ struct PersistenceAndQueueTests {
             return
         }
         #expect(message.contains("queue is full"))
-        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == IntegrationPolicy.pendingQueueLimit)
+        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == limit)
     }
 
     @Test func permanentQueueRejectsNewWorkAtHardLimit() throws {
-        let store = try PersistenceStore(inMemory: true)
-        for index in 0..<IntegrationPolicy.permanentQueueLimit {
+        let limit = 5
+        let store = try PersistenceStore(
+            inMemory: true,
+            queueLimits: .init(pendingWarning: 4, pendingLimit: 5, permanentWarning: 4, permanentLimit: limit)
+        )
+        for index in 0..<limit {
             let track = TrackMetadata(
                 identity: .init(persistentID: "failed-\(index)"), title: "F\(index)",
                 artist: "A", album: nil, duration: 100, source: .appleMusicCatalog,
@@ -1261,7 +1269,7 @@ struct PersistenceAndQueueTests {
             return
         }
         #expect(message.contains("need attention"))
-        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == IntegrationPolicy.permanentQueueLimit)
+        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == limit)
     }
 
     @Test func submittedScrobblesAreRemovedOnTheNextDrain() async throws {
