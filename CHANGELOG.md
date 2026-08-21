@@ -2,6 +2,8 @@
 
 ## 1.1.0 - Unreleased
 
+- Improve Discord album-cover reliability by accepting exact song/artist catalog matches across single, EP, deluxe, and album metadata changes; retry transient catalog misses; preserve signed provider thumbnail URLs; and send supported image URLs directly to Discord without a third-party proxy.
+
 ### 1.1.0-beta.2 - 2026-08-20
 
 - Move the website and Discord platform-badge URLs to the canonical Vercel deployment.

@@ -350,6 +350,22 @@ struct ArtworkTests {
         #expect(!ArtworkCatalogMatcher.isReliable(wrongRelease, track: track))
         #expect(!ArtworkCatalogMatcher.isReliable(misleadingSubstring, track: track))
         #expect(ArtworkCatalogMatcher.isReliable(deluxeRelease, track: track))
+        #expect(ArtworkCatalogMatcher.isTrackAndArtistMatch(wrongRelease, track: track))
+    }
+
+    @Test func exactSongAndArtistCanSupplyArtworkAfterReleaseAlbumChanges() {
+        let track = TrackMetadata(
+            identity: .init(persistentID: "release-change"), title: "TIT FOR TAT", artist: "Tate McRae",
+            album: "TIT FOR TAT - Single", duration: 180, source: .appleMusicCatalog,
+            appleMusicURL: nil, artworkReference: nil
+        )
+        let catalogRelease = CatalogTrack(
+            trackName: "TIT FOR TAT", artistName: "Tate McRae", collectionName: "SO CLOSE TO WHAT??? (deluxe)",
+            artworkUrl100: "https://example.com/100x100bb.jpg"
+        )
+
+        #expect(!ArtworkCatalogMatcher.isReliable(catalogRelease, track: track))
+        #expect(ArtworkCatalogMatcher.isTrackAndArtistMatch(catalogRelease, track: track))
     }
 
     private static func imageData() -> Data? {
@@ -381,8 +397,7 @@ struct DiscordPresenceTests {
         let payload = DiscordPresenceClient.activityPayload(for: presence)
         let assets = try #require(payload["assets"] as? [String: String])
         let largeImage = try #require(assets["large_image"])
-        #expect(largeImage.contains("wsrv.nl"))
-        #expect(largeImage.contains("example.com/album.jpg"))
+        #expect(largeImage == artworkURL.absoluteString)
         #expect(assets["large_text"] == nil)
         #expect(assets["small_image"] == ReleaseConfiguration.discordApplicationIconURL)
     }
@@ -470,10 +485,10 @@ struct DiscordPresenceTests {
         #expect(timestamps["end"] == 1_180_000)
         #expect(assets["large_text"] == nil)
         #expect(assets["small_image"] == PlaybackPlatform.spotify.discordSmallImageURL)
-        #expect(assets["large_image"]?.contains("wsrv.nl") == true)
+        #expect(assets["large_image"] == artworkURL.absoluteString)
     }
 
-    @Test func httpArtworkIsUpgradedAndProxiedForDiscord() throws {
+    @Test func httpArtworkIsUpgradedForDiscord() throws {
         let artworkURL = try #require(URL(string: "http://is1.mzstatic.com/image/thumb/cover/100x100bb.jpg"))
         let presence = DiscordPresence(
             title: "Track", state: "Artist", startedAt: nil,
@@ -482,9 +497,18 @@ struct DiscordPresenceTests {
         let payload = DiscordPresenceClient.activityPayload(for: presence)
         let assets = try #require(payload["assets"] as? [String: String])
         let largeImage = try #require(assets["large_image"])
-        #expect(largeImage.contains("wsrv.nl"))
-        #expect(largeImage.contains("https://is1.mzstatic.com"))
-        #expect(!largeImage.contains("http://is1.mzstatic.com"))
+        #expect(largeImage == "https://is1.mzstatic.com/image/thumb/cover/100x100bb.jpg")
+    }
+
+    @Test func signedArtworkQueryIsPreservedForDiscord() throws {
+        let artworkURL = try #require(URL(string: "https://lh3.googleusercontent.com/cover=w600-h600?token=\(String(repeating: "a", count: 240))"))
+        let presence = DiscordPresence(
+            title: "Track", state: "Artist", startedAt: nil,
+            appleMusicURL: nil, artworkURL: artworkURL, buttonLabel: "Listen"
+        )
+        let payload = DiscordPresenceClient.activityPayload(for: presence)
+        let assets = try #require(payload["assets"] as? [String: String])
+        #expect(assets["large_image"] == artworkURL.absoluteString)
     }
 
     @Test func discordTextIsTrimmedBoundedAndNeverBlank() throws {

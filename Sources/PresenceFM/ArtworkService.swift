@@ -36,7 +36,8 @@ actor ArtworkService {
     private var memory: [String: Data] = [:]
     private var accessOrder: [String] = []
     private var catalogURLs: [String: URL] = [:]
-    private var catalogMisses: Set<String> = []
+    private var catalogMisses: [String: Date] = [:]
+    private let catalogMissRetryInterval: TimeInterval = 5 * 60
 
     init(
         memoryLimit: Int = IntegrationPolicy.artworkMemoryEntries,
@@ -150,7 +151,11 @@ actor ArtworkService {
             return directURL
         }
         if let cached = catalogURLs[key] { return cached }
-        if catalogMisses.contains(key) { return nil }
+        if let missedAt = catalogMisses[key],
+           clock.now.timeIntervalSince(missedAt) < catalogMissRetryInterval {
+            return nil
+        }
+        catalogMisses.removeValue(forKey: key)
 
         let queries = catalogSearchTerms(for: track)
         for term in queries {
@@ -159,7 +164,7 @@ actor ArtworkService {
                 return result
             }
         }
-        catalogMisses.insert(key)
+        catalogMisses[key] = clock.now
         return nil
     }
 
@@ -204,10 +209,15 @@ actor ArtworkService {
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let payload = try? JSONDecoder().decode(CatalogSearchResponse.self, from: data),
                   !payload.results.isEmpty else { return nil }
-            let match = payload.results.max {
-                ArtworkCatalogMatcher.score($0, track: track) < ArtworkCatalogMatcher.score($1, track: track)
+            let ranked = payload.results.sorted {
+                ArtworkCatalogMatcher.score($0, track: track) > ArtworkCatalogMatcher.score($1, track: track)
             }
-            guard let match, ArtworkCatalogMatcher.isReliable(match, track: track),
+            // Prefer the exact release, but do not discard an exact song and
+            // artist merely because Music reports a single/EP album while the
+            // catalog has since folded the song into a full album.
+            let match = ranked.first { ArtworkCatalogMatcher.isReliable($0, track: track) }
+                ?? ranked.first { ArtworkCatalogMatcher.isTrackAndArtistMatch($0, track: track) }
+            guard let match,
                   let result = upgradedArtworkURL(match.artworkUrl100) else { return nil }
             return result
         } catch {
@@ -218,7 +228,7 @@ actor ArtworkService {
     func invalidatePublicArtworkLookup(for identity: TrackIdentity) {
         let key = cacheKey(for: identity)
         catalogURLs.removeValue(forKey: key)
-        catalogMisses.remove(key)
+        catalogMisses.removeValue(forKey: key)
     }
 
     func invalidateArtwork(for identity: TrackIdentity) {
@@ -229,7 +239,7 @@ actor ArtworkService {
             at: directory.appendingPathComponent(key).appendingPathExtension("artwork")
         )
         catalogURLs.removeValue(forKey: key)
-        catalogMisses.remove(key)
+        catalogMisses.removeValue(forKey: key)
     }
 
     func downloadedArtwork(from url: URL, for identity: TrackIdentity) async -> Data? {
@@ -341,8 +351,7 @@ enum ArtworkCatalogMatcher {
     }
 
     static func isReliable(_ candidate: CatalogTrack, track: TrackMetadata) -> Bool {
-        guard normalizedFieldsMatch(candidate.trackName, track.title),
-              normalizedFieldsMatch(candidate.artistName, track.artist) else { return false }
+        guard isTrackAndArtistMatch(candidate, track: track) else { return false }
         if let album = track.album?.trimmingCharacters(in: .whitespacesAndNewlines),
            !album.isEmpty,
            let candidateAlbum = candidate.collectionName?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -352,6 +361,11 @@ enum ArtworkCatalogMatcher {
             return normalizedAlbumMatch(candidateAlbum, album)
         }
         return true
+    }
+
+    static func isTrackAndArtistMatch(_ candidate: CatalogTrack, track: TrackMetadata) -> Bool {
+        normalizedFieldsMatch(candidate.trackName, track.title)
+            && normalizedFieldsMatch(candidate.artistName, track.artist)
     }
 
     private static func normalizedFieldsMatch(_ lhs: String, _ rhs: String) -> Bool {
@@ -396,14 +410,11 @@ private func upgradedArtworkURL(_ value: String) -> URL? {
 }
 
 enum DiscordMediaURL {
-    /// Discord's external asset loader is picky about CDNs and formats.
-    /// Route player/catalog covers through wsrv so more songs render reliably.
+    /// Discord accepts public image URLs directly. Keeping the provider URL
+    /// avoids an extra proxy failure point and preserves signed CDN queries.
     static func externalImage(_ url: URL?, fallback: String) -> String {
         guard let url, let normalized = normalizedHTTPSArtworkURL(url) else { return fallback }
-        if isAlreadyProxied(normalized) || isDiscordHosted(normalized) {
-            return normalized.absoluteString
-        }
-        return proxiedImageURL(for: normalized)
+        return normalized.absoluteString
     }
 
     static func normalizedHTTPSArtworkURL(_ url: URL) -> URL? {
@@ -413,36 +424,8 @@ enum DiscordMediaURL {
         }
         guard let normalized = components?.url ?? url as URL?,
               normalized.scheme?.lowercased() == "https" else { return nil }
-        // Drop oversized query strings that Discord may reject.
-        if let query = normalized.query, query.count > 180 {
-            components?.query = nil
-            return components?.url
-        }
+        guard normalized.absoluteString.count <= 2_048 else { return nil }
         return normalized
-    }
-
-    private static func isAlreadyProxied(_ url: URL) -> Bool {
-        let host = url.host?.lowercased() ?? ""
-        return host == "wsrv.nl" || host == "images.weserv.nl"
-    }
-
-    private static func isDiscordHosted(_ url: URL) -> Bool {
-        let host = url.host?.lowercased() ?? ""
-        return host.hasSuffix("discordapp.com") || host.hasSuffix("discord.com") || host.hasSuffix("discordapp.net")
-    }
-
-    private static func proxiedImageURL(for url: URL) -> String {
-        var components = URLComponents(string: "https://wsrv.nl/")!
-        components.queryItems = [
-            URLQueryItem(name: "url", value: url.absoluteString),
-            URLQueryItem(name: "output", value: "jpg"),
-            URLQueryItem(name: "w", value: "600"),
-            URLQueryItem(name: "h", value: "600"),
-            URLQueryItem(name: "fit", value: "cover"),
-            URLQueryItem(name: "n", value: "-1"),
-            URLQueryItem(name: "il", value: "")
-        ]
-        return components.url?.absoluteString ?? url.absoluteString
     }
 }
 
