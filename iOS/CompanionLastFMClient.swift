@@ -16,6 +16,7 @@ enum CompanionLastFMError: LocalizedError {
 }
 
 actor CompanionLastFMClient {
+    static let callbackURL = "https://presence-fm.vercel.app/lastfm-callback.html"
     private var credentials: CompanionLastFMCredentials
     private let keychain: CompanionKeychain
     private let session: URLSession
@@ -34,7 +35,7 @@ actor CompanionLastFMClient {
         else { throw CompanionLastFMError.invalidResponse }
         components.queryItems = [
             .init(name: "api_key", value: credentials.apiKey), .init(name: "token", value: token),
-            .init(name: "cb", value: "presencefm://lastfm-auth"),
+            .init(name: "cb", value: Self.callbackURL),
         ]
         guard let url = components.url else { throw CompanionLastFMError.invalidResponse }
         UserDefaults.standard.set(token, forKey: "PresenceFMLastFMAuthToken")

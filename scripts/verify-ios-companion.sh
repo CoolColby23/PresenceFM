@@ -14,6 +14,7 @@ grep -q 'pixelWidth: 1024' <<< "$dimensions"
 grep -q 'pixelHeight: 1024' <<< "$dimensions"
 grep -q 'presencefm' "$ROOT/iOS/Info.plist"
 grep -q 'lastfm-auth' "$ROOT/iOS/CompanionLastFMClient.swift"
+grep -q 'presence-fm.vercel.app/lastfm-callback.html' "$ROOT/iOS/CompanionLastFMClient.swift"
 
 if rg -n '\.pink|FF2D55|magenta' "$ROOT/iOS" --glob '*.swift' --glob '*.json'; then
     echo "Retired pink/magenta branding remains in the iOS app."

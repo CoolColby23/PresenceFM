@@ -76,6 +76,15 @@ for required in ("robots.txt", "sitemap.xml", "styles.css", "script.js"):
     if not (root / required).is_file():
         errors.append(f"missing website file: {required}")
 
+callback = root / "lastfm-callback.html"
+if not callback.is_file():
+    errors.append("missing Last.fm callback bridge")
+else:
+    callback_source = callback.read_text(encoding="utf-8")
+    for required_text in ("presencefm://lastfm-auth", "URLSearchParams", "encodeURIComponent"):
+        if required_text not in callback_source:
+            errors.append(f"Last.fm callback bridge is missing {required_text}")
+
 if errors:
     print("Website verification failed:", file=sys.stderr)
     for error in errors:

@@ -94,7 +94,7 @@ struct LastFMOnboardingView: View {
                         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20))
                     }
                     Link("Create a Last.fm API application", destination: URL(string: "https://www.last.fm/api/account/create")!)
-                    Text("Set its callback URL to presencefm://lastfm-auth for automatic return. Credentials stay in this iPhone's Keychain.")
+                    Text("Set its callback URL to https://presence-fm.vercel.app/lastfm-callback.html. Credentials stay in this iPhone's Keychain.")
                         .font(.caption)
                         .foregroundStyle(CompanionBrand.secondaryText)
                         .multilineTextAlignment(.center)
