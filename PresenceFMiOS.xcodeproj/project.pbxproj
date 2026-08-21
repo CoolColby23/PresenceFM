@@ -8,7 +8,8 @@
 		100000000000000000000001 /* PresenceFMiOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PresenceFMiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000002 /* iOS */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (100000000000000000000023,); path = iOS; sourceTree = "<group>"; };
 		100000000000000000000003 /* Products */ = {isa = PBXGroup; children = (100000000000000000000001 /* PresenceFMiOS.app */,); name = Products; sourceTree = "<group>"; };
-		100000000000000000000004 = {isa = PBXGroup; children = (100000000000000000000002 /* iOS */,100000000000000000000003 /* Products */,); sourceTree = "<group>"; };
+		100000000000000000000004 = {isa = PBXGroup; children = (100000000000000000000002 /* iOS */,100000000000000000000005 /* Defaults.xcconfig */,100000000000000000000003 /* Products */,); sourceTree = "<group>"; };
+		100000000000000000000005 /* Defaults.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Defaults.xcconfig; sourceTree = SOURCE_ROOT; };
 
 		100000000000000000000010 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		100000000000000000000011 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000020 /* PresenceFMCore in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
@@ -54,12 +55,11 @@
 
 		100000000000000000000040 = {isa = XCConfigurationList; buildConfigurations = (100000000000000000000050,100000000000000000000051,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		100000000000000000000041 = {isa = XCConfigurationList; buildConfigurations = (100000000000000000000052,100000000000000000000053,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		100000000000000000000050 = {isa = XCBuildConfiguration; baseConfigurationReferenceRelativePath = Config/Defaults.xcconfig; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SWIFT_VERSION = 5.0;}; name = Debug; };
-		100000000000000000000051 = {isa = XCBuildConfiguration; baseConfigurationReferenceRelativePath = Config/Defaults.xcconfig; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SWIFT_VERSION = 5.0;}; name = Release; };
-		100000000000000000000052 = {isa = XCBuildConfiguration; baseConfigurationReferenceRelativePath = Config/Defaults.xcconfig; buildSettings = {
+		100000000000000000000050 = {isa = XCBuildConfiguration; baseConfigurationReference = 100000000000000000000005 /* Defaults.xcconfig */; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SWIFT_VERSION = 5.0;}; name = Debug; };
+		100000000000000000000051 = {isa = XCBuildConfiguration; baseConfigurationReference = 100000000000000000000005 /* Defaults.xcconfig */; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SWIFT_VERSION = 5.0;}; name = Release; };
+		100000000000000000000052 = {isa = XCBuildConfiguration; baseConfigurationReference = 100000000000000000000005 /* Defaults.xcconfig */; buildSettings = {
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-			CODE_SIGN_ENTITLEMENTS = Config/PresenceFMiOS.entitlements;
 			CODE_SIGN_STYLE = Automatic;
 			CURRENT_PROJECT_VERSION = 1;
 			DEVELOPMENT_TEAM = "$(DEVELOPMENT_TEAM)";
@@ -70,7 +70,7 @@
 			INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 			INFOPLIST_KEY_NSMusicUsageDescription = "PresenceFM reads Apple Music playback and recent history to prepare Last.fm scrobbles.";
 			INFOPLIST_KEY_NSAppleMusicUsageDescription = "PresenceFM reads Apple Music playback and recent history to prepare Last.fm scrobbles.";
-			INFOPLIST_KEY_UIBackgroundModes = (fetch, remote-notification,);
+			INFOPLIST_KEY_UIBackgroundModes = (fetch,);
 			INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 			INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 			INFOPLIST_KEY_PresenceFMLastFMAPIKey = "$(LASTFM_API_KEY)";
@@ -86,10 +86,9 @@
 			SWIFT_VERSION = 5.0;
 			TARGETED_DEVICE_FAMILY = 1;
 		}; name = Debug; };
-		100000000000000000000053 = {isa = XCBuildConfiguration; baseConfigurationReferenceRelativePath = Config/Defaults.xcconfig; buildSettings = {
+		100000000000000000000053 = {isa = XCBuildConfiguration; baseConfigurationReference = 100000000000000000000005 /* Defaults.xcconfig */; buildSettings = {
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-			CODE_SIGN_ENTITLEMENTS = Config/PresenceFMiOS.entitlements;
 			CODE_SIGN_STYLE = Automatic;
 			CURRENT_PROJECT_VERSION = 1;
 			DEVELOPMENT_TEAM = "$(DEVELOPMENT_TEAM)";
@@ -100,7 +99,7 @@
 			INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 			INFOPLIST_KEY_NSMusicUsageDescription = "PresenceFM reads Apple Music playback and recent history to prepare Last.fm scrobbles.";
 			INFOPLIST_KEY_NSAppleMusicUsageDescription = "PresenceFM reads Apple Music playback and recent history to prepare Last.fm scrobbles.";
-			INFOPLIST_KEY_UIBackgroundModes = (fetch, remote-notification,);
+			INFOPLIST_KEY_UIBackgroundModes = (fetch,);
 			INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 			INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 			INFOPLIST_KEY_PresenceFMLastFMAPIKey = "$(LASTFM_API_KEY)";

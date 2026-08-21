@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 actor CompanionKeychain {
-    enum Key: String { case lastFMSession, lastFMUsername, deviceID }
+    enum Key: String { case lastFMAPIKey, lastFMSharedSecret, lastFMSession, lastFMUsername, deviceID }
     private let service = "fm.presence.companion"
 
     func value(for key: Key) -> String? {

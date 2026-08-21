@@ -17,7 +17,7 @@
     <key>PresenceFMLastFMAPIKey</key><string>$(LASTFM_API_KEY)</string>
     <key>PresenceFMLastFMSharedSecret</key><string>$(LASTFM_SHARED_SECRET)</string>
     <key>BGTaskSchedulerPermittedIdentifiers</key><array><string>fm.presence.companion.refresh</string></array>
-    <key>UIBackgroundModes</key><array><string>fetch</string><string>remote-notification</string></array>
+    <key>UIBackgroundModes</key><array><string>fetch</string></array>
     <key>UILaunchScreen</key><dict/>
     <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
 </dict></plist>

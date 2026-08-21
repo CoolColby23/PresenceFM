@@ -1,5 +1,10 @@
 # Changelog
 
+## Next
+
+- Move iOS Last.fm API credentials into first-launch onboarding and store them in the device Keychain instead of requiring compile-time secrets.
+- Support free Apple personal-team installation with a local-only default build that does not require CloudKit or push-notification entitlements.
+
 ## 1.1.0 - 2026-08-20
 
 - Add a source-built iPhone companion for evidence-based Apple Music scrobbling, durable offline queues, review of uncertain listens, and private CloudKit coordination with the Mac.

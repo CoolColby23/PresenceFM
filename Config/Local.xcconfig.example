@@ -2,7 +2,6 @@
 DEVELOPMENT_TEAM = YOUR_TEAM_ID
 PRESENCEFM_MAC_BUNDLE_ID = com.example.PresenceFM.mac
 PRESENCEFM_IOS_BUNDLE_ID = com.example.PresenceFM.ios
-PRESENCEFM_ICLOUD_CONTAINER = iCloud.com.example.PresenceFM
-LASTFM_API_KEY = YOUR_LASTFM_API_KEY
-LASTFM_SHARED_SECRET = YOUR_LASTFM_SHARED_SECRET
+// Optional paid-program capability. Leave blank for a local-only personal-team build.
+PRESENCEFM_ICLOUD_CONTAINER =
 PRESENCEFM_REQUIRE_LOCAL_CONFIG = YES

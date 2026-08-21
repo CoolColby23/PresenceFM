@@ -115,7 +115,7 @@ open PresenceFM.app
 
 ### Source-built iPhone companion
 
-The repository also contains an iOS 18 Apple Music scrobbling companion. It is not an App Store product or a distributed binary: clone the repository, provide your own Last.fm application credentials, Apple signing identity, bundle identifiers, and private CloudKit container, then install it from Xcode. Start with [Config/README.md](Config/README.md) and the measured-behavior checklist in [Documentation/IOS-COMPANION.md](Documentation/IOS-COMPANION.md).
+The repository also contains an iOS 18 Apple Music scrobbling companion. It is not an App Store product or a distributed binary: clone the repository, use a free Apple personal team and unique bundle identifier, then enter your Last.fm application credentials during onboarding. The default build is local-only; CloudKit coordination remains an optional paid-program capability. Start with [Config/README.md](Config/README.md) and the measured-behavior checklist in [Documentation/IOS-COMPANION.md](Documentation/IOS-COMPANION.md).
 
 Personal configuration lives in ignored `Config/Local.xcconfig`. Credentials and session tokens must never be committed.
 

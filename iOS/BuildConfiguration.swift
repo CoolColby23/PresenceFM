@@ -17,3 +17,10 @@ struct CompanionBuildConfiguration: Sendable {
     var isLastFMConfigured: Bool { !apiKey.isEmpty && !sharedSecret.isEmpty }
     var isCloudConfigured: Bool { cloudContainerIdentifier?.isEmpty == false }
 }
+
+struct CompanionLastFMCredentials: Sendable {
+    let apiKey: String
+    let sharedSecret: String
+
+    var isConfigured: Bool { !apiKey.isEmpty && !sharedSecret.isEmpty }
+}

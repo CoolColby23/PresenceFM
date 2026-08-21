@@ -7,7 +7,7 @@ enum CompanionLastFMError: LocalizedError {
     case configuration, unauthorized, invalidResponse, api(String)
     var errorDescription: String? {
         switch self {
-        case .configuration: "Add Last.fm credentials to Config/Local.xcconfig."
+        case .configuration: "Enter your Last.fm API credentials in PresenceFM."
         case .unauthorized: "Connect Last.fm in Settings."
         case .invalidResponse: "Last.fm returned an invalid response."
         case .api(let message): message
@@ -16,14 +16,16 @@ enum CompanionLastFMError: LocalizedError {
 }
 
 actor CompanionLastFMClient {
-    private let configuration: CompanionBuildConfiguration
+    private var credentials: CompanionLastFMCredentials
     private let keychain: CompanionKeychain
     private let session: URLSession
     private var earliestRequest = Date.distantPast
 
-    init(configuration: CompanionBuildConfiguration, keychain: CompanionKeychain, session: URLSession = .shared) {
-        self.configuration = configuration; self.keychain = keychain; self.session = session
+    init(credentials: CompanionLastFMCredentials, keychain: CompanionKeychain, session: URLSession = .shared) {
+        self.credentials = credentials; self.keychain = keychain; self.session = session
     }
+
+    func updateCredentials(_ credentials: CompanionLastFMCredentials) { self.credentials = credentials }
 
     func authorizationURL() async throws -> URL {
         let response = try await call(method: "auth.getToken", parameters: [:], sessionKey: nil)
@@ -31,7 +33,7 @@ actor CompanionLastFMClient {
             var components = URLComponents(string: "https://www.last.fm/api/auth/")
         else { throw CompanionLastFMError.invalidResponse }
         components.queryItems = [
-            .init(name: "api_key", value: configuration.apiKey), .init(name: "token", value: token),
+            .init(name: "api_key", value: credentials.apiKey), .init(name: "token", value: token),
             .init(name: "cb", value: "presencefm://lastfm-auth"),
         ]
         guard let url = components.url else { throw CompanionLastFMError.invalidResponse }
@@ -88,12 +90,12 @@ actor CompanionLastFMClient {
     }
 
     private func call(method: String, parameters: [String: String], sessionKey: String?) async throws -> [String: Any] {
-        guard configuration.isLastFMConfigured else { throw CompanionLastFMError.configuration }
+        guard credentials.isConfigured else { throw CompanionLastFMError.configuration }
         let delay = earliestRequest.timeIntervalSinceNow
         if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
         earliestRequest = Date().addingTimeInterval(0.35)
         let values = LastFMRequestBuilder.values(
-            method: method, parameters: parameters, apiKey: configuration.apiKey, secret: configuration.sharedSecret, sessionKey: sessionKey)
+            method: method, parameters: parameters, apiKey: credentials.apiKey, secret: credentials.sharedSecret, sessionKey: sessionKey)
         var request = URLRequest(url: URL(string: "https://ws.audioscrobbler.com/2.0/")!)
         request.httpMethod = "POST"; request.timeoutInterval = 20
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")

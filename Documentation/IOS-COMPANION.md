@@ -20,6 +20,8 @@ Never use silent audio, location, or unrelated background modes to prolong execu
 
 ## CloudKit development schema
 
+CloudKit coordination is optional and is not enabled in the default personal-team build. A free Apple ID can install and use the local queue and Last.fm submission path without it.
+
 The app creates a `PresenceFM` custom zone in the configured private database. During development, run both apps once to create `PresenceAccount`, `Listen`, `Evidence`, `Device`, `SyncCursor`, and `SubmissionGate` record types. Inspect them in CloudKit Console before physical two-device testing. The database contains evidence and coordination state, never Last.fm keys or session tokens.
 
 ## Physical-device checklist

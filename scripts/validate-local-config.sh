@@ -6,7 +6,7 @@ if [[ "${PRESENCEFM_REQUIRE_LOCAL_CONFIG:-YES}" != "YES" ]]; then
 fi
 
 missing=()
-for name in DEVELOPMENT_TEAM PRESENCEFM_IOS_BUNDLE_ID PRESENCEFM_ICLOUD_CONTAINER LASTFM_API_KEY LASTFM_SHARED_SECRET; do
+for name in DEVELOPMENT_TEAM PRESENCEFM_IOS_BUNDLE_ID; do
   value="${(P)name:-}"
   if [[ -z "$value" || "$value" == YOUR_* ]]; then missing+=("$name"); fi
 done

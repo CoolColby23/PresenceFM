@@ -13,6 +13,7 @@ final class CompanionAppModel {
     private(set) var lastFMUsername: String?
     private(set) var musicAuthorization = MusicAuthorization.currentStatus
     private(set) var cloudStatus = "Preparing"
+    private(set) var hasLastFMCredentials = false
     var statusMessage: String?
     var presentedEditor: CanonicalListen?
     var diagnosticsURL: URL?
@@ -33,13 +34,15 @@ final class CompanionAppModel {
         }
     }
     var reviewItems: [CanonicalListen] { history.filter { $0.state == .review } }
-    var isConfigured: Bool { configuration.isLastFMConfigured }
+    var needsOnboarding: Bool { !hasLastFMCredentials }
 
     func start() async {
         do {
             let deviceID = try await keychain.stableDeviceID()
             let source = AppleMusicEvidenceSource(deviceID: deviceID); self.source = source
-            let lastFM = CompanionLastFMClient(configuration: configuration, keychain: keychain); self.lastFM = lastFM
+            let credentials = await storedLastFMCredentials()
+            hasLastFMCredentials = credentials.isConfigured
+            let lastFM = CompanionLastFMClient(credentials: credentials, keychain: keychain); self.lastFM = lastFM
             let cloud = CloudSubmissionCoordinator(
                 containerIdentifier: configuration.cloudContainerIdentifier, deviceID: deviceID, localOnly: !configuration.isCloudConfigured
             ) { [keychain] in await keychain.value(for: .lastFMUsername) }
@@ -106,6 +109,37 @@ final class CompanionAppModel {
         } catch { show(error) }
     }
 
+    func saveLastFMCredentials(apiKey: String, sharedSecret: String) async -> Bool {
+        let credentials = CompanionLastFMCredentials(
+            apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            sharedSecret: sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        guard credentials.isConfigured else {
+            statusMessage = "Enter both the Last.fm API key and shared secret."
+            return false
+        }
+        do {
+            try await keychain.set(credentials.apiKey, for: .lastFMAPIKey)
+            try await keychain.set(credentials.sharedSecret, for: .lastFMSharedSecret)
+            await lastFM?.updateCredentials(credentials)
+            hasLastFMCredentials = true
+            return true
+        } catch {
+            show(error)
+            return false
+        }
+    }
+
+    func clearLastFMCredentials() async {
+        do {
+            try await disconnectLastFM()
+            try await keychain.set(nil, for: .lastFMAPIKey)
+            try await keychain.set(nil, for: .lastFMSharedSecret)
+            await lastFM?.updateCredentials(.init(apiKey: "", sharedSecret: ""))
+            hasLastFMCredentials = false
+        } catch { show(error) }
+    }
+
     func finishLastFMConnection() async {
         do { lastFMUsername = try await lastFM?.completeAuthorization(); statusMessage = "Connected to Last.fm." } catch { show(error) }
     }
@@ -155,6 +189,14 @@ final class CompanionAppModel {
         pollTask = Task { [weak self] in
             while !Task.isCancelled { await self?.captureNow(); try? await Task.sleep(for: .seconds(1)) }
         }
+    }
+    private func storedLastFMCredentials() async -> CompanionLastFMCredentials {
+        let stored = CompanionLastFMCredentials(
+            apiKey: await keychain.value(for: .lastFMAPIKey) ?? "",
+            sharedSecret: await keychain.value(for: .lastFMSharedSecret) ?? ""
+        )
+        if stored.isConfigured { return stored }
+        return .init(apiKey: configuration.apiKey, sharedSecret: configuration.sharedSecret)
     }
     private func reload() async { snapshot = await store.current() }
     private func show(_ error: Error) { statusMessage = (error as? LocalizedError)?.errorDescription ?? "PresenceFM encountered an error." }

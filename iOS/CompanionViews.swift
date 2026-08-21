@@ -5,10 +5,16 @@ import SwiftUI
 struct CompanionRootView: View {
     let model: CompanionAppModel
     var body: some View {
-        TabView {
-            NavigationStack { NowPlayingView(model: model) }.tabItem { Label("Now Playing", systemImage: "play.circle.fill") }
-            NavigationStack { HistoryView(model: model) }.tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
-            NavigationStack { ReviewView(model: model) }.tabItem { Label("Review", systemImage: "tray.full.fill") }.badge(model.reviewItems.count)
+        Group {
+            if model.needsOnboarding {
+                LastFMOnboardingView(model: model)
+            } else {
+                TabView {
+                    NavigationStack { NowPlayingView(model: model) }.tabItem { Label("Now Playing", systemImage: "play.circle.fill") }
+                    NavigationStack { HistoryView(model: model) }.tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                    NavigationStack { ReviewView(model: model) }.tabItem { Label("Review", systemImage: "tray.full.fill") }.badge(model.reviewItems.count)
+                }
+            }
         }
         .tint(.pink)
         .alert("PresenceFM", isPresented: Binding(get: { model.statusMessage != nil }, set: { if !$0 { model.statusMessage = nil } })) {
@@ -17,6 +23,66 @@ struct CompanionRootView: View {
             Text(model.statusMessage ?? "")
         }
         .sheet(item: Binding(get: { model.presentedEditor }, set: { model.presentedEditor = $0 })) { MetadataEditor(model: model, listen: $0) }
+    }
+}
+
+struct LastFMOnboardingView: View {
+    let model: CompanionAppModel
+    @State private var apiKey = ""
+    @State private var sharedSecret = ""
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Image(systemName: "waveform.circle.fill")
+                            .font(.system(size: 56))
+                            .foregroundStyle(.pink)
+                        Text("Connect your Last.fm app")
+                            .font(.title.bold())
+                        Text(
+                            "PresenceFM stores these credentials in this iPhone's Keychain. They are never committed to the source repository or synced to iCloud."
+                        )
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 8)
+                }
+                Section("Last.fm API credentials") {
+                    TextField("API key", text: $apiKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("Shared secret", text: $sharedSecret)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                Section {
+                    Link("Create or view a Last.fm API account", destination: URL(string: "https://www.last.fm/api/account/create")!)
+                    Text("Use presencefm://lastfm-auth as the callback URL when Last.fm asks for one.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section {
+                    Button {
+                        isSaving = true
+                        Task {
+                            if await model.saveLastFMCredentials(apiKey: apiKey, sharedSecret: sharedSecret) {
+                                await model.connectLastFM()
+                            }
+                            isSaving = false
+                        }
+                    } label: {
+                        if isSaving { ProgressView().frame(maxWidth: .infinity) } else { Text("Save and Connect Last.fm").frame(maxWidth: .infinity) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        isSaving || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .navigationTitle("Welcome to PresenceFM")
+        }
     }
 }
 
@@ -173,11 +239,9 @@ struct CompanionSettingsView: View {
                 if let username = model.lastFMUsername {
                     LabeledContent("Account", value: username); Button("Disconnect", role: .destructive) { Task { await model.disconnectLastFM() } }
                 } else {
-                    Button("Connect Last.fm") { Task { await model.connectLastFM() } }.disabled(!model.isConfigured);
-                    if !model.isConfigured {
-                        Text("Add credentials to ignored Config/Local.xcconfig, then rebuild.").font(.caption).foregroundStyle(.secondary)
-                    }
+                    Button("Connect Last.fm") { Task { await model.connectLastFM() } }
                 }
+                Button("Replace API Credentials", role: .destructive) { Task { await model.clearLastFMCredentials() } }
             }
             Section("Privacy and sync") {
                 Toggle("Global Private Mode", isOn: Binding(get: { model.snapshot.privateMode }, set: { value in Task { await model.setPrivateMode(value) } }));
@@ -190,7 +254,7 @@ struct CompanionSettingsView: View {
                 if let url = model.diagnosticsURL { ShareLink(item: url) { Label("Share Diagnostics", systemImage: "square.and.arrow.up") } }
             }
             Section("Build") {
-                Text("This source-built app uses personal credentials from Config/Local.xcconfig. Never distribute your compiled binary or commit that file.")
+                Text("Last.fm credentials are stored in this device's Keychain. The default free-account build runs locally without CloudKit coordination.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }.navigationTitle("Settings")
