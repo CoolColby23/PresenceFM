@@ -1,6 +1,10 @@
 # Changelog
 
-## 1.1.0 - Unreleased
+## 1.1.0 - 2026-08-20
+
+- Add a source-built iPhone companion for evidence-based Apple Music scrobbling, durable offline queues, review of uncertain listens, and private CloudKit coordination with the Mac.
+- Share deterministic listen eligibility, evidence, merge, and submission rules between the macOS and iOS apps through `PresenceFMCore`.
+- Keep personal Last.fm credentials, Apple signing settings, bundle identifiers, and CloudKit containers in ignored local configuration, backed by repository secret scanning and build-time validation.
 
 - Improve Discord album-cover reliability by accepting exact song/artist catalog matches across single, EP, deluxe, and album metadata changes; retry transient catalog misses; preserve signed provider thumbnail URLs; and send supported image URLs directly to Discord without a third-party proxy.
 

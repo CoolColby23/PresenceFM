@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 # PresenceFM
 
 PresenceFM is a native macOS menu-bar app that reads current playback from Apple Music, Spotify, YouTube Music through YTMDesktop, or TIDAL, publishes optional Discord Rich Presence, and scrobbles qualified listens to Last.fm. It runs locally, starts private, and requires no PresenceFM account or backend.
@@ -109,6 +112,12 @@ swift test
 ./scripts/verify-package.sh
 open PresenceFM.app
 ```
+
+### Source-built iPhone companion
+
+The repository also contains an iOS 18 Apple Music scrobbling companion. It is not an App Store product or a distributed binary: clone the repository, provide your own Last.fm application credentials, Apple signing identity, bundle identifiers, and private CloudKit container, then install it from Xcode. Start with [Config/README.md](Config/README.md) and the measured-behavior checklist in [Documentation/IOS-COMPANION.md](Documentation/IOS-COMPANION.md).
+
+Personal configuration lives in ignored `Config/Local.xcconfig`. Credentials and session tokens must never be committed.
 
 PresenceFM includes Discord application ID `1525555974390153346`. Development builds can still override it under **Settings → Advanced** or with `PRESENCEFM_DISCORD_APPLICATION_ID` while packaging.
 

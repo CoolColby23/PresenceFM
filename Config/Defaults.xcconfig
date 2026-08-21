@@ -1,0 +1,10 @@
+// Safe committed defaults. Personal values belong in ignored Local.xcconfig.
+DEVELOPMENT_TEAM =
+PRESENCEFM_MAC_BUNDLE_ID = fm.presence.PresenceFM.dev
+PRESENCEFM_IOS_BUNDLE_ID = fm.presence.PresenceFM.ios.dev
+PRESENCEFM_ICLOUD_CONTAINER =
+LASTFM_API_KEY =
+LASTFM_SHARED_SECRET =
+PRESENCEFM_REQUIRE_LOCAL_CONFIG = YES
+
+#include? "Local.xcconfig"

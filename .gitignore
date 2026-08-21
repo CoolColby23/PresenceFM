@@ -7,6 +7,10 @@ DerivedData/
 *.profraw
 Local.xcconfig
 Secrets.xcconfig
+*.mobileprovision
+*.provisionprofile
+Config/Generated*.swift
+Config/Generated*.xcconfig
 PresenceFM.app/
 PresenceFM-*.dmg
 PresenceFM-*.zip
