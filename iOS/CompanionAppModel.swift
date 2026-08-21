@@ -34,27 +34,41 @@ final class CompanionAppModel {
         }
     }
     var reviewItems: [CanonicalListen] { history.filter { $0.state == .review } }
-    var needsOnboarding: Bool { !hasLastFMCredentials }
+    var needsOnboarding: Bool { lastFMUsername == nil }
+    var isReadyForCapture: Bool { lastFMUsername != nil && musicAuthorization == .authorized }
 
     func start() async {
+        let deviceID: UUID
         do {
-            let deviceID = try await keychain.stableDeviceID()
-            let source = AppleMusicEvidenceSource(deviceID: deviceID); self.source = source
-            let credentials = await storedLastFMCredentials()
-            hasLastFMCredentials = credentials.isConfigured
-            let lastFM = CompanionLastFMClient(credentials: credentials, keychain: keychain); self.lastFM = lastFM
-            let cloud = CloudSubmissionCoordinator(
-                containerIdentifier: configuration.cloudContainerIdentifier, deviceID: deviceID, localOnly: !configuration.isCloudConfigured
-            ) { [keychain] in await keychain.value(for: .lastFMUsername) }
-            self.cloud = cloud
-            snapshot = await store.current(); lastFMUsername = await lastFM.username()
-            try await cloud.prepare(); cloudStatus = configuration.isCloudConfigured ? "Connected" : "Local only"
-            await source.beginNotifications { [weak self] in Task { @MainActor in await self?.captureNow() } }
-            if musicAuthorization == .authorized { try await establishBaselineAndReconcile() }
-            scheduleBackgroundRefresh()
-            await drainQueue()
-            startPolling()
-        } catch { show(error); cloudStatus = "Needs attention" }
+            deviceID = try await keychain.stableDeviceID()
+        } catch {
+            show(error)
+            return
+        }
+        let source = AppleMusicEvidenceSource(deviceID: deviceID); self.source = source
+        let credentials = await storedLastFMCredentials()
+        hasLastFMCredentials = credentials.isConfigured
+        let lastFM = CompanionLastFMClient(credentials: credentials, keychain: keychain); self.lastFM = lastFM
+        let cloud = CloudSubmissionCoordinator(
+            containerIdentifier: configuration.cloudContainerIdentifier, deviceID: deviceID, localOnly: !configuration.isCloudConfigured
+        ) { [keychain] in await keychain.value(for: .lastFMUsername) }
+        self.cloud = cloud
+        snapshot = await store.current(); lastFMUsername = await lastFM.username()
+        do {
+            try await cloud.prepare()
+            cloudStatus = configuration.isCloudConfigured ? "Connected" : "Local only"
+        } catch {
+            cloudStatus = "Unavailable — using local queue"
+            try? await store.log("cloud", "Cloud coordination unavailable during startup.")
+        }
+        await source.beginNotifications { [weak self] in Task { @MainActor in await self?.captureNow() } }
+        guard lastFMUsername != nil else { return }
+        if musicAuthorization == .authorized {
+            do { try await establishBaselineAndReconcile() } catch { try? await store.log("reconcile", "Startup reconciliation deferred.") }
+        }
+        scheduleBackgroundRefresh()
+        await drainQueue()
+        startPolling()
     }
 
     func requestMusicAccess() async {
@@ -100,9 +114,19 @@ final class CompanionAppModel {
         guard let lastFM else { return }
         do {
             let url = try await lastFM.authorizationURL()
-            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "presencefm") { [weak self] _, error in
-                guard error == nil else { return }
-                Task { @MainActor in await self?.finishLastFMConnection() }
+            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "presencefm") { [weak self] callbackURL, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin { self.show(error) }
+                        return
+                    }
+                    guard callbackURL?.scheme == "presencefm" else {
+                        self.statusMessage = "Last.fm did not return to PresenceFM. Check the callback URL for your API application."
+                        return
+                    }
+                    await self.finishLastFMConnection()
+                }
             }
             session.prefersEphemeralWebBrowserSession = true; session.presentationContextProvider = WebAuthenticationAnchor.shared
             authenticationSession = session; session.start()
@@ -141,7 +165,14 @@ final class CompanionAppModel {
     }
 
     func finishLastFMConnection() async {
-        do { lastFMUsername = try await lastFM?.completeAuthorization(); statusMessage = "Connected to Last.fm." } catch { show(error) }
+        do {
+            lastFMUsername = try await lastFM?.completeAuthorization()
+            statusMessage = "Connected to Last.fm."
+            if musicAuthorization == .authorized { try await establishBaselineAndReconcile() }
+            scheduleBackgroundRefresh()
+            await drainQueue()
+            startPolling()
+        } catch { show(error) }
     }
     func disconnectLastFM() async { do { try await lastFM?.disconnect(); lastFMUsername = nil } catch { show(error) } }
     func exportDiagnostics() async { do { diagnosticsURL = try await store.diagnosticsExport() } catch { show(error) } }
@@ -199,7 +230,17 @@ final class CompanionAppModel {
         return .init(apiKey: configuration.apiKey, sharedSecret: configuration.sharedSecret)
     }
     private func reload() async { snapshot = await store.current() }
-    private func show(_ error: Error) { statusMessage = (error as? LocalizedError)?.errorDescription ?? "PresenceFM encountered an error." }
+    private func show(_ error: Error) {
+        if let description = (error as? LocalizedError)?.errorDescription, !description.isEmpty {
+            statusMessage = description
+        } else {
+            let description = (error as NSError).localizedDescription
+            statusMessage =
+                description == "The operation couldn’t be completed. (Swift.Error error 1.)"
+                ? "PresenceFM could not complete that action. Try again, then export diagnostics if it continues."
+                : description
+        }
+    }
 }
 
 final class WebAuthenticationAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {

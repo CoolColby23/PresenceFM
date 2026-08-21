@@ -4,6 +4,7 @@
 
 - Move iOS Last.fm API credentials into first-launch onboarding and store them in the device Keychain instead of requiring compile-time secrets.
 - Support free Apple personal-team installation with a local-only default build that does not require CloudKit or push-notification entitlements.
+- Add the branded iOS app icon, keep onboarding active until Last.fm authorization completes, and prevent premature Music reconciliation from producing startup errors.
 
 ## 1.1.0 - 2026-08-20
 

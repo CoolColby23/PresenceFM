@@ -34,54 +34,69 @@ struct LastFMOnboardingView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Image(systemName: "waveform.circle.fill")
-                            .font(.system(size: 56))
-                            .foregroundStyle(.pink)
-                        Text("Connect your Last.fm app")
-                            .font(.title.bold())
+            ScrollView {
+                VStack(spacing: 24) {
+                    Image("PresenceFMBrandIcon")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 112, height: 112)
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .shadow(color: .pink.opacity(0.25), radius: 20, y: 8)
+                    VStack(spacing: 8) {
+                        Text("Connect Last.fm").font(.largeTitle.bold())
                         Text(
-                            "PresenceFM stores these credentials in this iPhone's Keychain. They are never committed to the source repository or synced to iCloud."
+                            model.hasLastFMCredentials
+                                ? "Your API credentials are saved. Finish by authorizing your Last.fm account."
+                                : "Add your own Last.fm API application once, then authorize your account."
                         )
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                     }
-                    .padding(.vertical, 8)
-                }
-                Section("Last.fm API credentials") {
-                    TextField("API key", text: $apiKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("Shared secret", text: $sharedSecret)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                }
-                Section {
-                    Link("Create or view a Last.fm API account", destination: URL(string: "https://www.last.fm/api/account/create")!)
-                    Text("Use presencefm://lastfm-auth as the callback URL when Last.fm asks for one.")
+                    if model.hasLastFMCredentials {
+                        Button("Authorize with Last.fm") { Task { await model.connectLastFM() } }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                        Button("Use Different API Credentials") { Task { await model.clearLastFMCredentials() } }
+                            .foregroundStyle(.secondary)
+                    } else {
+                        VStack(spacing: 12) {
+                            TextField("API key", text: $apiKey)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .textFieldStyle(.roundedBorder)
+                            SecureField("Shared secret", text: $sharedSecret)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .textFieldStyle(.roundedBorder)
+                            Button {
+                                isSaving = true
+                                Task {
+                                    if await model.saveLastFMCredentials(apiKey: apiKey, sharedSecret: sharedSecret) {
+                                        await model.connectLastFM()
+                                    }
+                                    isSaving = false
+                                }
+                            } label: {
+                                if isSaving { ProgressView().frame(maxWidth: .infinity) } else { Text("Save and Authorize").frame(maxWidth: .infinity) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                            .disabled(
+                                isSaving || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    || sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                        .padding()
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20))
+                    }
+                    Link("Create a Last.fm API application", destination: URL(string: "https://www.last.fm/api/account/create")!)
+                    Text("Set its callback URL to presencefm://lastfm-auth. Credentials stay in this iPhone's Keychain.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
-                Section {
-                    Button {
-                        isSaving = true
-                        Task {
-                            if await model.saveLastFMCredentials(apiKey: apiKey, sharedSecret: sharedSecret) {
-                                await model.connectLastFM()
-                            }
-                            isSaving = false
-                        }
-                    } label: {
-                        if isSaving { ProgressView().frame(maxWidth: .infinity) } else { Text("Save and Connect Last.fm").frame(maxWidth: .infinity) }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(
-                        isSaving || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                .padding(24)
             }
-            .navigationTitle("Welcome to PresenceFM")
+            .background(Color(.systemGroupedBackground))
         }
     }
 }
@@ -257,7 +272,9 @@ struct CompanionSettingsView: View {
                 Text("Last.fm credentials are stored in this device's Keychain. The default free-account build runs locally without CloudKit coordination.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-        }.navigationTitle("Settings")
+        }
+        .navigationTitle("Settings")
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 

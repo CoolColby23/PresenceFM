@@ -9,6 +9,8 @@ import SwiftUI
             .backgroundTask(.appRefresh("fm.presence.companion.refresh")) {
                 await model.reconcile(); await model.scheduleBackgroundRefresh()
             }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await model.reconcile() } } }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active, model.isReadyForCapture { Task { await model.reconcile() } }
+            }
     }
 }
