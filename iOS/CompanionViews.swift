@@ -9,11 +9,7 @@ struct CompanionRootView: View {
             if model.needsOnboarding {
                 LastFMOnboardingView(model: model)
             } else {
-                TabView {
-                    NavigationStack { LastFMHomeView(model: model) }.tabItem { Label("Scrobbles", systemImage: "waveform") }
-                    NavigationStack { HistoryView(model: model) }.tabItem { Label("Captured", systemImage: "music.note.list") }
-                    NavigationStack { ReviewView(model: model) }.tabItem { Label("Review", systemImage: "tray.full.fill") }.badge(model.reviewItems.count)
-                }
+                NavigationStack { LastFMHomeView(model: model) }
             }
         }
         .tint(CompanionBrand.electricBlue)
@@ -110,23 +106,14 @@ struct LastFMHomeView: View {
     let model: CompanionAppModel
     var body: some View {
         List {
-            Section {
-                LastFMAccountHeader(model: model)
-                    .listRowBackground(CompanionBrand.surface)
-                if model.musicAuthorization != .authorized {
-                    Button("Enable automatic Apple Music scrobbling") { Task { await model.requestMusicAccess() } }
-                } else {
-                    Label("New Apple Music plays are scrobbled automatically", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(.green)
-                }
-                if let issue = model.captureIssue {
-                    Label(issue, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+            if model.musicAuthorization != .authorized {
+                Section {
+                    Button("Enable Apple Music scrobbling") { Task { await model.requestMusicAccess() } }
+                } footer: {
+                    Text("Music access lets PresenceFM submit newly played songs to Last.fm.")
                 }
             }
-            Section("Recent scrobbles") {
+            Section {
                 if model.isLoadingLastFMHistory, model.lastFMTracks.isEmpty {
                     HStack {
                         Spacer(); ProgressView(); Spacer()
@@ -136,11 +123,21 @@ struct LastFMHomeView: View {
                 } else {
                     ForEach(model.lastFMTracks) { track in LastFMTrackRow(track: track) }
                 }
+            } header: {
+                HStack {
+                    Text(model.lastFMUsername ?? "Last.fm")
+                    Spacer()
+                    if model.isLoadingLastFMHistory { ProgressView().controlSize(.small) }
+                }
+            } footer: {
+                if let issue = model.captureIssue {
+                    Label(issue, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
             }
         }
         .companionCanvas()
-        .listStyle(.insetGrouped)
-        .navigationTitle("Last.fm")
+        .listStyle(.plain)
+        .navigationTitle("Scrobbles")
         .refreshable { await model.refreshLastFMHistory() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -151,23 +148,6 @@ struct LastFMHomeView: View {
                 }
             }
         }
-    }
-}
-
-struct LastFMAccountHeader: View {
-    let model: CompanionAppModel
-    var body: some View {
-        HStack(spacing: 14) {
-            CompanionBrandMark().frame(width: 54, height: 54)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(model.lastFMUsername ?? "Last.fm").font(.title2.bold())
-                if let current = model.lastFMTracks.first(where: \.isNowPlaying) {
-                    Text("Listening to \(current.title)").font(.subheadline).foregroundStyle(CompanionBrand.secondaryText).lineLimit(1)
-                } else {
-                    Text("Your listening history").font(.subheadline).foregroundStyle(CompanionBrand.secondaryText)
-                }
-            }
-        }.padding(.vertical, 6)
     }
 }
 

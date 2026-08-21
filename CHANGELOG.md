@@ -7,6 +7,7 @@
 - Add the branded iOS app icon, keep onboarding active until Last.fm authorization completes, and prevent premature Music reconciliation from producing startup errors.
 - Apply the PresenceFM blue/cyan adaptive theme across iOS, support both Last.fm callback return and manual authorization completion, and verify iOS branding and simulator builds in CI.
 - Recenter the iPhone app on live Last.fm history and recent scrobbles while Apple Music capture runs quietly, with pull-to-refresh, artwork, safer local-ledger recovery, and nonblocking passive-capture health.
+- Simplify the connected iPhone experience to one focused scrobble-history screen, removing internal capture and review tabs from the main interface.
 
 ## 1.1.0 - 2026-08-20
 
