@@ -173,10 +173,7 @@ struct MenuBarBrandMark: View {
 
     static let image: NSImage = {
         guard
-            let url = Bundle.module.url(
-                forResource: "presencefm-symbol-mono",
-                withExtension: "svg"
-            ),
+            let url = menuBarSymbolURL(),
             let image = NSImage(contentsOf: url)
         else {
             let fallback = NSImage(systemSymbolName: "waveform", accessibilityDescription: "PresenceFM")
@@ -193,4 +190,23 @@ struct MenuBarBrandMark: View {
         image.isTemplate = true
         return image
     }()
+
+    /// Do not use `Bundle.module` while constructing the menu-bar label. SwiftPM's
+    /// generated accessor traps when a damaged or concurrently replaced app bundle
+    /// is missing its resource bundle, which would make a cosmetic asset prevent
+    /// the entire app from launching. The system waveform remains a safe fallback.
+    private static func menuBarSymbolURL() -> URL? {
+        let fileName = "presencefm-symbol-mono.svg"
+        if let resourceURL = Bundle.main.resourceURL {
+            let packagedBundleURL = resourceURL.appendingPathComponent("PresenceFM_PresenceFM.bundle")
+            if let packagedBundle = Bundle(url: packagedBundleURL),
+               let url = packagedBundle.url(forResource: "presencefm-symbol-mono", withExtension: "svg")
+            {
+                return url
+            }
+            let directURL = resourceURL.appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: directURL.path) { return directURL }
+        }
+        return nil
+    }
 }

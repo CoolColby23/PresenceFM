@@ -1,9 +1,8 @@
-import SwiftData
+import PresenceFMCore
 import SwiftUI
 
 struct NowPlayingOverviewView: View {
     @Environment(AppModel.self) private var model
-    @Query(sort: \IntegrationHealthEvent.timestamp, order: .reverse) private var healthEvents: [IntegrationHealthEvent]
 
     var body: some View {
         LazyVGrid(
@@ -11,9 +10,21 @@ struct NowPlayingOverviewView: View {
             alignment: .center,
             spacing: 14
         ) {
+            captureCard
             playbackCard
             sharingCard
             activityCard
+        }
+    }
+
+    private var captureCard: some View {
+        let presentation = model.captureStatus
+        return NowPlayingInfoCard(title: "Scrobble status", symbol: presentation.status.symbol) {
+            CaptureConfidenceContent(presentation: presentation) {
+                if let action = presentation.recoveryAction {
+                    model.performCaptureRecovery(action)
+                }
+            }
         }
     }
 
@@ -69,30 +80,34 @@ struct NowPlayingOverviewView: View {
     }
 
     private var activityCard: some View {
-        NowPlayingInfoCard(title: "Recent connection activity", symbol: "clock.arrow.circlepath") {
-            if healthEvents.isEmpty {
-                Text("Connection changes will appear here as PresenceFM runs.")
+        NowPlayingInfoCard(title: "Recent scrobble activity", symbol: "clock.arrow.circlepath") {
+            if model.recentCaptureActivity.isEmpty {
+                Text("Completed and interrupted plays will be explained here.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(Array(healthEvents.prefix(3).enumerated()), id: \.element.id) { index, event in
+                ForEach(Array(model.recentCaptureActivity.enumerated()), id: \.offset) { index, activity in
                     if index > 0 { Divider() }
                     HStack(spacing: 9) {
                         Circle()
-                            .fill(eventTint(event))
+                            .fill(activity.status.tint)
                             .frame(width: 7, height: 7)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(IntegrationID(rawValue: event.integrationRaw)?.displayName ?? "Connection")
+                            Text(activity.headline)
                                 .font(.callout.weight(.semibold))
-                            Text(eventState(event))
+                                .lineLimit(1)
+                            Text(activity.explanation)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(event.timestamp, style: .relative)
+                        if let timestamp = activity.timestamp {
+                            Text(timestamp, style: .relative)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
+                        }
                     }
+                    .accessibilityElement(children: .combine)
                 }
             }
         }
@@ -134,17 +149,76 @@ struct NowPlayingOverviewView: View {
         return health.summary
     }
 
-    private func eventState(_ event: IntegrationHealthEvent) -> String {
-        IntegrationState(rawValue: event.stateRaw)?.rawValue.capitalized ?? event.stateRaw.capitalized
+}
+
+private struct CaptureConfidenceContent: View {
+    let presentation: CaptureStatusPresentation
+    let recovery: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: presentation.status.symbol)
+                    .foregroundStyle(presentation.status.tint)
+                Text(presentation.headline)
+                    .font(.callout.weight(.semibold))
+                Spacer()
+                if let timestamp = presentation.timestamp {
+                    Text(timestamp, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Text(presentation.explanation)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let progress = presentation.progress {
+                ProgressView(value: progress)
+                    .accessibilityLabel("Scrobble eligibility")
+                    .accessibilityValue(progress.formatted(.percent.precision(.fractionLength(0))))
+            }
+            if let action = presentation.recoveryAction {
+                Button(action.buttonTitle, action: recovery)
+                    .buttonStyle(.borderless)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private extension CaptureStatusPresentation.Status {
+    var symbol: String {
+        switch self {
+        case .detecting: "waveform.badge.magnifyingglass"
+        case .progressing: "waveform"
+        case .queued: "tray.full"
+        case .submitted: "checkmark.circle.fill"
+        case .excluded: "nosign"
+        case .privateMode: "eye.slash.fill"
+        case .needsAttention: "exclamationmark.triangle.fill"
+        }
     }
 
-    private func eventTint(_ event: IntegrationHealthEvent) -> Color {
-        switch IntegrationState(rawValue: event.stateRaw) {
-        case .connected: BrandColors.success
-        case .failed, .authorizationExpired: BrandColors.error
-        case .permissionRequired: BrandColors.warning
-        case .connecting: BrandColors.electricBlue
-        case .offline, .inactive, .disabled, .none: BrandColors.neutral
+    var tint: Color {
+        switch self {
+        case .submitted: BrandColors.success
+        case .progressing, .detecting: BrandColors.electricBlue
+        case .queued, .privateMode: BrandColors.warning
+        case .excluded: BrandColors.neutral
+        case .needsAttention: BrandColors.error
+        }
+    }
+}
+
+private extension CaptureStatusPresentation.RecoveryAction {
+    var buttonTitle: String {
+        switch self {
+        case .grantPlaybackPermission: "Grant Permission"
+        case .reconnectLastFM: "Reconnect Last.fm"
+        case .retryQueue: "Review Queue"
+        case .disablePrivateMode: "End Private Mode"
+        case .openSettings: "Open Settings"
         }
     }
 }

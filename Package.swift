@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "PresenceFM",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
         .library(name: "PresenceFMCore", targets: ["PresenceFMCore"]),
         .executable(name: "PresenceFM", targets: ["PresenceFM"]),
@@ -15,7 +15,7 @@ let package = Package(
         .target(name: "PresenceFMCore", path: "Sources/PresenceFMCore"),
         .executableTarget(
             name: "PresenceFM",
-            dependencies: [.product(name: "Sparkle", package: "Sparkle")],
+            dependencies: ["PresenceFMCore", .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/PresenceFM",
             resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
@@ -27,7 +27,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PresenceFMTests",
-            dependencies: ["PresenceFM"],
+            dependencies: ["PresenceFM", "PresenceFMCore"],
             path: "Tests/PresenceFMTests",
             linkerSettings: [
                 // SwiftPM does not add its binary-framework output directory to

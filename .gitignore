@@ -9,6 +9,10 @@ Local.xcconfig
 Secrets.xcconfig
 *.mobileprovision
 *.provisionprofile
+*.p12
+*.pfx
+*.key
+*.pem
 Config/Generated*.swift
 Config/Generated*.xcconfig
 PresenceFM.app/

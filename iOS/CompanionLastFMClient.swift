@@ -86,7 +86,7 @@ actor CompanionLastFMClient {
 
     func username() async -> String? { await keychain.value(for: .lastFMUsername) }
 
-    func recentTracks(username: String, limit: Int = 50) async throws -> [CompanionLastFMTrack] {
+    func recentTracks(username: String, limit: Int = 200) async throws -> [CompanionLastFMTrack] {
         let response = try await call(
             method: "user.getRecentTracks",
             parameters: ["user": username, "limit": String(limit), "extended": "0"],
@@ -147,9 +147,25 @@ actor CompanionLastFMClient {
         if let duration = metadata.duration { parameters["duration"] = String(Int(duration)) }
         let response = try await call(method: "track.scrobble", parameters: parameters, sessionKey: sessionKey)
         guard let scrobbles = response["scrobbles"] as? [String: Any],
-            let attributes = scrobbles["@attr"] as? [String: Any],
-            String(describing: attributes["accepted"] ?? "0") == "1"
-        else { throw CompanionLastFMError.api("Last.fm did not accept the scrobble.") }
+            let attributes = scrobbles["@attr"] as? [String: Any]
+        else { throw CompanionLastFMError.invalidResponse }
+        guard String(describing: attributes["accepted"] ?? "0") == "1" else {
+            let entry = (scrobbles["scrobble"] as? [String: Any])
+                ?? (scrobbles["scrobble"] as? [[String: Any]])?.first
+            let ignored = (entry?["ignoredMessage"] as? [String: Any])
+                ?? (entry?["ignoredmessage"] as? [String: Any])
+            let reason = (ignored?["#text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let code = String(describing: ignored?["code"] ?? "")
+            let fallback: String = switch code {
+            case "1": "Last.fm filtered the artist."
+            case "2": "Last.fm filtered the track."
+            case "3": "This play is too old for Last.fm to accept."
+            case "4": "This play time is too far in the future."
+            case "5": "The Last.fm daily scrobble limit was reached."
+            default: "Last.fm did not accept the scrobble."
+            }
+            throw CompanionLastFMError.api(reason?.isEmpty == false ? reason! : fallback)
+        }
     }
 
     private func requiredSession() async throws -> String {

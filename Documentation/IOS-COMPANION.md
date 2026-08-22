@@ -27,3 +27,27 @@ The app creates a `PresenceFM` custom zone in the configured private database. D
 ## Physical-device checklist
 
 Record observed, reconciled, uncertain, missed, and duplicate counts for foreground, locked, force-quit, offline, repeat, seek, local-file, and simultaneous Mac/iPhone sessions. A public reliability claim must not be added until the matrix contains measured results.
+
+The iPhone home screen now reports detecting, progressing, queued, submitted,
+excluded, private, and needs-attention states through the same presentation
+contract used by the Mac app. Validate that every blocking state offers one
+working recovery action and that locked, suspended, and force-quit scenarios are
+described as iOS runtime limitations rather than continuous background capture.
+
+Historical reconciliation is user-confirmed. PresenceFM follows every page
+available from MusicKit's recently-played songs response and places new
+candidates in **Choose Past Plays**. Nothing in that inbox is submitted until
+the user selects individual songs or uses **Select All** and taps the scrobble
+button. MusicKit does not expose a complete event log: its list can omit older
+history and can collapse repeated plays of the same song into one last-played
+entry, so the UI must not describe this import as complete Apple Music history.
+
+| Scenario | Observed | Reconciled | Uncertain | Submitted | Missed | Duplicate | Evidence / notes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Foreground playback | — | — | — | — | — | — | Physical device required |
+| Locked / suspended | — | — | — | — | — | — | Physical device required |
+| Force-quit then relaunch | — | — | — | — | — | — | Physical device required |
+| Offline then reconnect | — | — | — | — | — | — | Physical device required |
+| Repeat and seek | — | — | — | — | — | — | Physical device required |
+| Local Music file | — | — | — | — | — | — | Physical device required |
+| Simultaneous Mac / iPhone | — | — | — | — | — | — | Cloud-enabled build required |

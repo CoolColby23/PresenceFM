@@ -16,13 +16,15 @@ grep -q 'presencefm' "$ROOT/iOS/Info.plist"
 grep -q 'lastfm-auth' "$ROOT/iOS/CompanionLastFMClient.swift"
 grep -q 'presence-fm.vercel.app/lastfm-callback.html' "$ROOT/iOS/CompanionLastFMClient.swift"
 
-if rg -n '\.pink|FF2D55|magenta' "$ROOT/iOS" --glob '*.swift' --glob '*.json'; then
+if grep -R -n -E '\.pink|FF2D55|magenta' "$ROOT/iOS" --include='*.swift' --include='*.json'; then
     echo "Retired pink/magenta branding remains in the iOS app."
     exit 1
 fi
 
 rm -rf "$DERIVED_DATA"
-xcodebuild \
+BUILD_LOG="$(mktemp -t presencefm-ios-build).log"
+trap 'rm -f "$BUILD_LOG"' EXIT
+if ! PRESENCEFM_REQUIRE_LOCAL_CONFIG=NO xcodebuild \
     -project "$ROOT/PresenceFMiOS.xcodeproj" \
     -scheme PresenceFMiOS \
     -configuration Debug \
@@ -31,6 +33,13 @@ xcodebuild \
     -derivedDataPath "$DERIVED_DATA" \
     ARCHS="$(uname -m)" \
     ONLY_ACTIVE_ARCH=YES \
-    build >/dev/null
+    CODE_SIGNING_ALLOWED=NO \
+    PRESENCEFM_REQUIRE_LOCAL_CONFIG=NO \
+    build >"$BUILD_LOG" 2>&1; then
+  tail -n 200 "$BUILD_LOG" >&2
+  exit 1
+fi
+rm -f "$BUILD_LOG"
+trap - EXIT
 
 echo "iOS companion branding, callback registration, assets, and simulator build verified."
