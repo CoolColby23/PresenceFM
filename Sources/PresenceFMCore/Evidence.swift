@@ -21,6 +21,7 @@ public enum ListenState: String, Codable, Sendable { case listening, review, que
 
 public enum ReviewReason: String, Codable, Sendable {
     case missingTimestamp, missingDuration, insufficientPlayTime, ambiguousDuplicate, conflictingMetadata, beforeBaseline
+    case historicalImport
 }
 
 public struct ScrobbleMetadata: Codable, Hashable, Sendable {

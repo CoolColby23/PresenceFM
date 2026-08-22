@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import PresenceFMCore
 import SwiftData
 import SwiftUI
 import Testing
@@ -756,6 +757,42 @@ private final class TestURLProtocol: URLProtocol, @unchecked Sendable {
 @MainActor
 @Suite("Preferences and notifications")
 struct PreferencesAndNotificationTests {
+    @Test func captureConfidencePrioritizesPrivacyPermissionAndProgress() throws {
+        let name = "PresenceFMTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.lastFMEnabled = true
+        preferences.privateMode = true
+        let model = AppModel(
+            store: try PersistenceStore(inMemory: true),
+            preferences: preferences,
+            notifications: NotificationCoordinator(delivery: FakeNotificationDelivery())
+        )
+
+        #expect(model.captureStatus.status == .privateMode)
+        #expect(model.captureStatus.recoveryAction == .disablePrivateMode)
+
+        preferences.privateMode = false
+        model.musicStatus = .awaitingPermission
+        #expect(model.captureStatus.status == .needsAttention)
+        #expect(model.captureStatus.recoveryAction == .grantPlaybackPermission)
+
+        model.musicStatus = .connected
+        model.lastFMStatus = .connected
+        let track = TrackMetadata(
+            identity: .init(persistentID: "confidence"), title: "Track", artist: "Artist",
+            album: nil, duration: 200, source: .appleMusicCatalog,
+            appleMusicURL: nil, artworkReference: nil
+        )
+        model.activeSession = PlaybackSession(
+            id: UUID(), track: track, startedAt: .now, accumulatedPlayTime: 25,
+            lastPosition: 25, eligibility: .listening, outcome: .active
+        )
+        #expect(model.captureStatus.status == .progressing)
+        #expect(model.captureStatus.progress == 0.25)
+    }
+
     @Test func enabledIntegrationsStartInHonestIdleStates() throws {
         let name = "PresenceFMTests.\(UUID())"
         let defaults = UserDefaults(suiteName: name)!

@@ -41,7 +41,14 @@ actor AppleMusicEvidenceSource: PlaybackEvidenceSource {
     func reconcile(since cursor: ReconciliationCursor) async throws -> ReconciliationResult {
         var request = MusicRecentlyPlayedRequest<Song>(); request.limit = 50
         let response = try await request.response()
-        let evidence = response.items.compactMap { song -> PlaybackEvidence? in
+        var items = response.items
+        while items.hasNextBatch {
+            let previousCount = items.count
+            guard let next = try await items.nextBatch(limit: 50), !next.isEmpty else { break }
+            items += next
+            guard items.count > previousCount else { break }
+        }
+        let evidence = items.compactMap { song -> PlaybackEvidence? in
             guard let played = song.lastPlayedDate, played > cursor.lastCheckedAt else { return nil }
             return PlaybackEvidence(
                 deviceID: deviceID, sourceTrackID: song.id.rawValue,

@@ -2,6 +2,9 @@
 
 ## Next
 
+- Import every page of recently played songs exposed by MusicKit into an iPhone review inbox, with individual selection, Select All, and explicit submission to Last.fm while retaining duplicate protection.
+- Add a shared scrobble-confidence model across Mac and iPhone, with live eligibility progress, plain-language queued/submitted/excluded states, a single recovery action, and recent capture explanations.
+- End iPhone onboarding with a live readiness check and explain that normal iOS background suspension can delay observation without presenting it as an app failure.
 - Move iOS Last.fm API credentials into first-launch onboarding and store them in the device Keychain instead of requiring compile-time secrets.
 - Support free Apple personal-team installation with a local-only default build that does not require CloudKit or push-notification entitlements.
 - Add the branded iOS app icon, keep onboarding active until Last.fm authorization completes, and prevent premature Music reconciliation from producing startup errors.

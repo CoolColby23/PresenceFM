@@ -32,6 +32,7 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 
 ## Last.fm and queue
 
+- For each active play, confirm the Scrobble Status card answers what was detected, whether it will scrobble, and the next recovery action when blocked. Confirm equivalent Mac and iPhone states use the same terminology.
 - Authorize a test account and verify the connected username.
 - Confirm now-playing appears promptly and a qualified listen scrobbles exactly once.
 - Confirm short tracks, unsupported live streams, skipped tracks, and Private Mode do not scrobble.

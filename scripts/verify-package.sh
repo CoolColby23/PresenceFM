@@ -17,6 +17,8 @@ RESOURCE_BUNDLE="$APP/Contents/Resources/PresenceFM_PresenceFM.bundle"
 [[ -d "$RESOURCE_BUNDLE" ]] || fail "SwiftPM resource bundle is missing"
 RESOURCE_SYMBOL="$(find "$RESOURCE_BUNDLE" -type f -name 'presencefm-symbol.svg' -print -quit)"
 [[ -n "$RESOURCE_SYMBOL" ]] || fail "SwiftPM resource bundle is missing its symbol"
+plutil -extract CFBundleIdentifier raw "$RESOURCE_BUNDLE/Contents/Info.plist" >/dev/null \
+  || fail "SwiftPM resource bundle cannot be opened as a macOS bundle"
 INTENTS_METADATA="$APP/Contents/Resources/Metadata.appintents"
 [[ -d "$INTENTS_METADATA" ]] || fail "App Intents metadata is missing"
 grep -R -q "SetPresenceFMPrivateModeIntent" "$INTENTS_METADATA" || fail "Private Mode intent metadata is missing"

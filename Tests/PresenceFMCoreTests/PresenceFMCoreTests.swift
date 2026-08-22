@@ -14,6 +14,24 @@ struct PresenceFMCoreTests {
         #expect(ScrobbleEligibilityPolicy.evaluate(eligible, baseline: baseline) == .eligible)
     }
 
+    @Test func reconciledHistoryRequiresExplicitImportSelection() {
+        let played = Date(timeIntervalSince1970: 900)
+        let historical = PlaybackEvidence(
+            deviceID: deviceID,
+            sourceTrackID: "historical-song",
+            metadata: .init(title: "Past Track", artist: "Artist", duration: 240, startedAt: played),
+            observedPlayTime: nil,
+            origin: .reconciled,
+            confidence: .probable,
+            capturedAt: Date(timeIntervalSince1970: 1_100)
+        )
+
+        #expect(ScrobbleEligibilityPolicy.evaluate(
+            historical,
+            baseline: CaptureBaseline(establishedAt: Date(timeIntervalSince1970: 1_000))
+        ) == .review(.historicalImport))
+    }
+
     @Test func repeatedTracksOutsideWindowRemainSeparate() {
         let first = evidence(start: Date(timeIntervalSince1970: 2_000), played: 120)
         let listen = CanonicalListen(id: CanonicalListenIdentity.make(for: first), evidence: [first], metadata: first.originalMetadata, state: .queued)
@@ -25,6 +43,24 @@ struct PresenceFMCoreTests {
         let signature = LastFMRequestBuilder.signature(parameters: ["method": "track.scrobble", "api_key": "key"], secret: "secret")
         #expect(signature.count == 32)
         #expect(signature == LastFMRequestBuilder.signature(parameters: ["api_key": "key", "method": "track.scrobble"], secret: "secret"))
+    }
+
+    @Test func capturePresentationClampsProgressAndPreservesRecovery() throws {
+        let presentation = CaptureStatusPresentation(
+            status: .needsAttention,
+            headline: "Reconnect Last.fm",
+            explanation: "Scrobbles will wait until the account is connected.",
+            progress: 1.5,
+            timestamp: Date(timeIntervalSince1970: 1_000),
+            recoveryAction: .reconnectLastFM
+        )
+
+        #expect(presentation.progress == 1)
+        #expect(presentation.recoveryAction == .reconnectLastFM)
+        #expect(try JSONDecoder().decode(
+            CaptureStatusPresentation.self,
+            from: JSONEncoder().encode(presentation)
+        ) == presentation)
     }
 
     private func evidence(start: Date, played: TimeInterval) -> PlaybackEvidence {

@@ -14,9 +14,16 @@ public enum ScrobbleEligibilityPolicy {
             return .ineligible("Title and artist are required.")
         }
         guard let startedAt = metadata.startedAt else { return .review(.missingTimestamp) }
+        if let duration = metadata.duration, duration <= 30 {
+            return .ineligible("Tracks must be longer than 30 seconds.")
+        }
+        // MusicKit exposes a last-played timestamp for historical items but not
+        // enough evidence to prove Last.fm's listening threshold. Present these
+        // to the user for explicit selection instead of silently submitting or
+        // rejecting them against the live-capture baseline.
+        if evidence.origin == .reconciled { return .review(.historicalImport) }
         guard startedAt >= baseline.establishedAt || evidence.origin == .manual else { return .review(.beforeBaseline) }
         guard let duration = metadata.duration else { return .review(.missingDuration) }
-        guard duration > 30 else { return .ineligible("Tracks must be longer than 30 seconds.") }
         let threshold = min(duration * 0.5, 240)
         guard let played = evidence.observedPlayTime else {
             return evidence.origin == .observed ? .review(.insufficientPlayTime) : .review(.insufficientPlayTime)

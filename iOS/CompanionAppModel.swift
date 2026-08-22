@@ -16,7 +16,10 @@ final class CompanionAppModel {
     private(set) var hasPendingLastFMAuthorization = false
     private(set) var lastFMTracks: [CompanionLastFMTrack] = []
     private(set) var isLoadingLastFMHistory = false
+    private(set) var isImportingAppleMusicHistory = false
+    private(set) var lastAppleMusicImportCount: Int?
     private(set) var captureIssue: String?
+    private(set) var readinessAcknowledged = false
     var statusMessage: String?
     var presentedEditor: CanonicalListen?
     var diagnosticsURL: URL?
@@ -36,8 +39,155 @@ final class CompanionAppModel {
         }
     }
     var reviewItems: [CanonicalListen] { history.filter { $0.state == .review } }
-    var needsOnboarding: Bool { lastFMUsername == nil }
+    var historicalImportItems: [CanonicalListen] {
+        reviewItems.filter { $0.reviewReason == .historicalImport }
+    }
+    var needsOnboarding: Bool { lastFMUsername == nil || !readinessAcknowledged }
     var isReadyForCapture: Bool { lastFMUsername != nil && musicAuthorization == .authorized }
+
+    var captureStatus: CaptureStatusPresentation {
+        if lastFMUsername == nil {
+            return CaptureStatusPresentation(
+                status: .needsAttention,
+                headline: "Connect Last.fm",
+                explanation: "Connect an account before PresenceFM can submit scrobbles.",
+                recoveryAction: .reconnectLastFM
+            )
+        }
+        if musicAuthorization != .authorized {
+            return CaptureStatusPresentation(
+                status: .needsAttention,
+                headline: "Apple Music access needed",
+                explanation: "Allow Music access so PresenceFM can identify and qualify plays.",
+                recoveryAction: .grantPlaybackPermission
+            )
+        }
+        if snapshot.privateMode {
+            return CaptureStatusPresentation(
+                status: .privateMode,
+                headline: "Private Mode is on",
+                explanation: "PresenceFM can detect playback, but nothing is sent to Last.fm.",
+                recoveryAction: .disablePrivateMode
+            )
+        }
+        if let captureIssue {
+            return CaptureStatusPresentation(
+                status: .needsAttention,
+                headline: "Capture needs attention",
+                explanation: captureIssue,
+                recoveryAction: .openSettings
+            )
+        }
+        guard let evidence = nowPlaying else {
+            if let submitted = history.first(where: { $0.state == .submitted }) {
+                return CaptureStatusPresentation(
+                    status: .submitted,
+                    headline: "Last scrobble submitted",
+                    explanation: "Open PresenceFM while listening for the strongest capture. iOS may pause background observation.",
+                    timestamp: submitted.submittedAt ?? submitted.canonicalMetadata.startedAt
+                )
+            }
+            return CaptureStatusPresentation(
+                status: .detecting,
+                headline: "Ready for playback",
+                explanation: "No song is detected right now. iOS background suspension is normal, and recent plays are checked when the app runs."
+            )
+        }
+        let listen = history.first { item in
+            item.evidence.contains { prior in
+                prior.id == evidence.id || (prior.sourceTrackID != nil && prior.sourceTrackID == evidence.sourceTrackID)
+            }
+        }
+        switch listen?.state {
+        case .queued, .submitting:
+            return CaptureStatusPresentation(
+                status: .queued,
+                headline: "Scrobble queued",
+                explanation: "The play is safe on this iPhone and will be retried automatically.",
+                progress: 1,
+                timestamp: evidence.capturedAt,
+                recoveryAction: .retryQueue
+            )
+        case .submitted:
+            return CaptureStatusPresentation(
+                status: .submitted,
+                headline: "Scrobbled to Last.fm",
+                explanation: "This play was accepted by Last.fm.",
+                progress: 1,
+                timestamp: listen?.submittedAt ?? evidence.capturedAt
+            )
+        case .privateListen:
+            return CaptureStatusPresentation(
+                status: .privateMode,
+                headline: "This play stayed private",
+                explanation: "Private Mode prevented submission to Last.fm.",
+                timestamp: evidence.capturedAt,
+                recoveryAction: .disablePrivateMode
+            )
+        case .review:
+            return CaptureStatusPresentation(
+                status: .needsAttention,
+                headline: "This play needs review",
+                explanation: reviewExplanation(listen?.reviewReason),
+                timestamp: evidence.capturedAt,
+                recoveryAction: .openSettings
+            )
+        case .failed:
+            return CaptureStatusPresentation(
+                status: .needsAttention,
+                headline: "Submission failed",
+                explanation: "The play is still stored locally and can be retried.",
+                timestamp: evidence.capturedAt,
+                recoveryAction: .retryQueue
+            )
+        case .dismissed:
+            return CaptureStatusPresentation(
+                status: .excluded,
+                headline: "This play will not scrobble",
+                explanation: "The track did not meet Last.fm eligibility requirements.",
+                timestamp: evidence.capturedAt
+            )
+        case .listening, .none:
+            let baseline = snapshot.baseline ?? CaptureBaseline(establishedAt: evidence.capturedAt)
+            switch ScrobbleEligibilityPolicy.evaluate(evidence, baseline: baseline) {
+            case .listening(let progress, let remaining):
+                return CaptureStatusPresentation(
+                    status: .progressing,
+                    headline: "Listening toward a scrobble",
+                    explanation: "Keep playing for \(Self.durationText(remaining)) to make this track eligible.",
+                    progress: progress,
+                    timestamp: evidence.capturedAt
+                )
+            case .eligible:
+                return CaptureStatusPresentation(status: .queued, headline: "Ready to scrobble", explanation: "The listening threshold has been reached.", progress: 1, timestamp: evidence.capturedAt)
+            case .ineligible(let reason):
+                return CaptureStatusPresentation(status: .excluded, headline: "This play will not scrobble", explanation: reason, timestamp: evidence.capturedAt)
+            case .review(let reason):
+                return CaptureStatusPresentation(status: .needsAttention, headline: "This play needs review", explanation: reviewExplanation(reason), timestamp: evidence.capturedAt, recoveryAction: .openSettings)
+            }
+        }
+    }
+
+    var recentCaptureActivity: [CaptureStatusPresentation] {
+        history.prefix(5).map { listen in
+            let explanation: String
+            let status: CaptureStatusPresentation.Status
+            switch listen.state {
+            case .submitted: status = .submitted; explanation = "Submitted to Last.fm"
+            case .queued, .submitting, .failed: status = .queued; explanation = "Saved locally for retry"
+            case .review: status = .needsAttention; explanation = reviewExplanation(listen.reviewReason)
+            case .privateListen: status = .privateMode; explanation = "Kept private"
+            case .dismissed: status = .excluded; explanation = "Did not meet eligibility requirements"
+            case .listening: status = .progressing; explanation = "Listening activity detected"
+            }
+            return CaptureStatusPresentation(
+                status: status,
+                headline: listen.canonicalMetadata.title,
+                explanation: explanation,
+                timestamp: listen.submittedAt ?? listen.canonicalMetadata.startedAt
+            )
+        }
+    }
 
     func start() async {
         let deviceID: UUID
@@ -57,6 +207,11 @@ final class CompanionAppModel {
         ) { [keychain] in await keychain.value(for: .lastFMUsername) }
         self.cloud = cloud
         snapshot = await store.current(); lastFMUsername = await lastFM.username()
+        if let stored = UserDefaults.standard.object(forKey: "companionReadinessAcknowledged") as? Bool {
+            readinessAcknowledged = stored
+        } else {
+            readinessAcknowledged = lastFMUsername != nil
+        }
         do {
             try await cloud.prepare()
             cloudStatus = configuration.isCloudConfigured ? "Connected" : "Local only"
@@ -115,6 +270,11 @@ final class CompanionAppModel {
     }
     func dismiss(_ listen: CanonicalListen) async { do { try await store.setState(.dismissed, for: listen.id); await reload() } catch { show(error) } }
     func approveAll() async { for item in reviewItems where item.canonicalMetadata.startedAt != nil { await approve(item) } }
+    func approveHistoricalImports(ids: Set<String>) async {
+        for item in historicalImportItems where ids.contains(item.id) {
+            await approve(item)
+        }
+    }
     func dismissAll() async { for item in reviewItems { await dismiss(item) } }
     func saveCorrection(id: String, title: String, artist: String, album: String?) async {
         do { try await store.correct(id: id, title: title, artist: artist, album: album); await reload(); presentedEditor = nil } catch { show(error) }
@@ -168,7 +328,7 @@ final class CompanionAppModel {
 
     func clearLastFMCredentials() async {
         do {
-            try await disconnectLastFM()
+            await disconnectLastFM()
             try await keychain.set(nil, for: .lastFMAPIKey)
             try await keychain.set(nil, for: .lastFMSharedSecret)
             await lastFM?.updateCredentials(.init(apiKey: "", sharedSecret: ""))
@@ -201,9 +361,58 @@ final class CompanionAppModel {
     func disconnectLastFM() async {
         do {
             try await lastFM?.disconnect(); lastFMUsername = nil; hasPendingLastFMAuthorization = false
+            readinessAcknowledged = false
+            UserDefaults.standard.set(false, forKey: "companionReadinessAcknowledged")
         } catch { show(error) }
     }
     func exportDiagnostics() async { do { diagnosticsURL = try await store.diagnosticsExport() } catch { show(error) } }
+
+    func importAvailableAppleMusicHistory() async {
+        guard !isImportingAppleMusicHistory else { return }
+        if musicAuthorization != .authorized {
+            await requestMusicAccess()
+            guard musicAuthorization == .authorized else { return }
+        }
+        guard let source else { return }
+        isImportingAppleMusicHistory = true
+        defer { isImportingAppleMusicHistory = false }
+        do {
+            let existingIDs = Set(snapshot.listens.map(\.id))
+            let result = try await source.reconcile(since: .init(lastCheckedAt: .distantPast))
+            for evidence in result.evidence { _ = try await store.ingest(evidence) }
+            try await store.setCursor(result.cursor)
+            await reload()
+            await refreshLastFMHistory()
+            let remoteDuplicates = historicalImportItems.filter(isLikelyOnLastFM)
+            for duplicate in remoteDuplicates { try await store.setState(.dismissed, for: duplicate.id) }
+            await reload()
+            lastAppleMusicImportCount = Set(historicalImportItems.map(\.id)).subtracting(existingIDs).count
+            try await store.log("history-import", "Found \(result.evidence.count) MusicKit history candidates.")
+        } catch {
+            captureIssue = friendlyDescription(for: error)
+            show(error)
+        }
+    }
+
+    func completeReadiness() {
+        readinessAcknowledged = true
+        UserDefaults.standard.set(true, forKey: "companionReadinessAcknowledged")
+    }
+
+    func performCaptureRecovery(_ action: CaptureStatusPresentation.RecoveryAction) async {
+        switch action {
+        case .grantPlaybackPermission:
+            await requestMusicAccess()
+        case .reconnectLastFM:
+            await connectLastFM()
+        case .retryQueue:
+            await drainQueue()
+        case .disablePrivateMode:
+            await setPrivateMode(false)
+        case .openSettings:
+            await reconcile()
+        }
+    }
 
     func scheduleBackgroundRefresh() {
         let request = BGAppRefreshTaskRequest(identifier: "fm.presence.companion.refresh")
@@ -273,5 +482,36 @@ final class CompanionAppModel {
             return "Apple Music history is temporarily unavailable. PresenceFM will retry automatically."
         }
         return description
+    }
+
+    private func reviewExplanation(_ reason: ReviewReason?) -> String {
+        switch reason {
+        case .missingTimestamp: "A reliable play time was unavailable."
+        case .missingDuration: "The track duration was unavailable."
+        case .insufficientPlayTime: "PresenceFM could not verify enough listening time."
+        case .ambiguousDuplicate: "This play may duplicate another captured play."
+        case .conflictingMetadata: "Music reported conflicting track details."
+        case .beforeBaseline: "The play began before capture was established."
+        case .historicalImport: "Apple Music reports this as recently played. Select it to scrobble it."
+        case .none: "PresenceFM needs confirmation before submitting this play."
+        }
+    }
+
+    private static func durationText(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval.rounded(.up)))
+        return seconds >= 60 ? "(seconds / 60)m (seconds % 60)s" : "(seconds)s"
+    }
+
+    private func isLikelyOnLastFM(_ listen: CanonicalListen) -> Bool {
+        guard let startedAt = listen.canonicalMetadata.startedAt else { return false }
+        let title = listen.canonicalMetadata.title.presenceNormalized
+        let artist = listen.canonicalMetadata.artist.presenceNormalized
+        let tolerance = max(180, (listen.canonicalMetadata.duration ?? 0) + 120)
+        return lastFMTracks.contains { track in
+            guard !track.isNowPlaying, let playedAt = track.playedAt else { return false }
+            return track.title.presenceNormalized == title
+                && track.artist.presenceNormalized == artist
+                && abs(playedAt.timeIntervalSince(startedAt)) <= tolerance
+        }
     }
 }

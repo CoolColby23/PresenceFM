@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import PresenceFMCore
 import ServiceManagement
 import SwiftData
 import SwiftUI
@@ -718,6 +719,151 @@ final class AppModel {
         guard let activeSession else { return nil }
         if let reason = scrobbleExclusionReason(for: activeSession.track) { return .ineligible(reason) }
         return activeSession.scrobblePresentation
+    }
+
+    var captureStatus: CaptureStatusPresentation {
+        if isPrivate {
+            return CaptureStatusPresentation(
+                status: .privateMode,
+                headline: "Private Mode is on",
+                explanation: "PresenceFM can detect playback, but nothing is sent to Last.fm.",
+                timestamp: clock.now,
+                recoveryAction: .disablePrivateMode
+            )
+        }
+        if musicStatus == .awaitingPermission {
+            return CaptureStatusPresentation(
+                status: .needsAttention,
+                headline: "Playback permission needed",
+                explanation: "Allow music-player access so PresenceFM can detect what is playing.",
+                timestamp: snapshot.observedAt,
+                recoveryAction: .grantPlaybackPermission
+            )
+        }
+        if !preferences.lastFMEnabled || lastFMStatus == .disabled {
+            return CaptureStatusPresentation(
+                status: .excluded,
+                headline: "Scrobbling is off",
+                explanation: "Playback stays local until Last.fm scrobbling is enabled.",
+                timestamp: snapshot.observedAt,
+                recoveryAction: .openSettings
+            )
+        }
+        switch lastFMStatus {
+        case .authorizationExpired, .failed:
+            return CaptureStatusPresentation(
+                status: .needsAttention,
+                headline: "Reconnect Last.fm",
+                explanation: "Detected plays will wait locally until Last.fm is connected again.",
+                timestamp: snapshot.observedAt,
+                recoveryAction: .reconnectLastFM
+            )
+        case .offline:
+            return CaptureStatusPresentation(
+                status: .queued,
+                headline: "Last.fm is offline",
+                explanation: "Eligible plays are kept on this Mac and retried automatically.",
+                timestamp: snapshot.observedAt,
+                recoveryAction: .retryQueue
+            )
+        default:
+            break
+        }
+        guard let session = activeSession else {
+            if let submitted = recentSessions.first(where: { $0.outcome == .submitted }) {
+                return CaptureStatusPresentation(
+                    status: .submitted,
+                    headline: "Last scrobble submitted",
+                    explanation: "Play music in a supported app to start another scrobble.",
+                    timestamp: submitted.startedAt
+                )
+            }
+            return CaptureStatusPresentation(
+                status: .detecting,
+                headline: "Ready for playback",
+                explanation: "Play music in a supported app. Inactivity is normal and is not an error.",
+                timestamp: snapshot.observedAt
+            )
+        }
+        if let reason = scrobbleExclusionReason(for: session.track) {
+            return CaptureStatusPresentation(
+                status: .excluded,
+                headline: "This play will stay local",
+                explanation: reason,
+                timestamp: session.startedAt,
+                recoveryAction: .openSettings
+            )
+        }
+        switch session.scrobblePresentation {
+        case .ineligible(let reason):
+            return CaptureStatusPresentation(
+                status: .excluded,
+                headline: "This play will not scrobble",
+                explanation: reason,
+                timestamp: session.startedAt
+            )
+        case .listening(let progress, let remaining):
+            return CaptureStatusPresentation(
+                status: .progressing,
+                headline: "Listening toward a scrobble",
+                explanation: "Keep playing for \(remaining.formattedDuration) to make this track eligible.",
+                progress: progress,
+                timestamp: session.startedAt
+            )
+        case .ready:
+            return CaptureStatusPresentation(
+                status: .queued,
+                headline: "Ready to scrobble",
+                explanation: "The listening threshold has been reached and submission is next.",
+                progress: 1,
+                timestamp: session.startedAt
+            )
+        case .queued:
+            return CaptureStatusPresentation(
+                status: .queued,
+                headline: "Scrobble queued",
+                explanation: "The play is safe on this Mac and will be retried automatically.",
+                progress: 1,
+                timestamp: session.startedAt,
+                recoveryAction: .retryQueue
+            )
+        case .submitted:
+            return CaptureStatusPresentation(
+                status: .submitted,
+                headline: "Scrobbled to Last.fm",
+                explanation: "This play was accepted by Last.fm.",
+                progress: 1,
+                timestamp: session.startedAt
+            )
+        }
+    }
+
+    var recentCaptureActivity: [CaptureStatusPresentation] {
+        recentSessions.prefix(3).map { session in
+            switch session.outcome {
+            case .submitted:
+                CaptureStatusPresentation(status: .submitted, headline: session.track.title, explanation: "Submitted to Last.fm", timestamp: session.startedAt)
+            case .queued, .failed:
+                CaptureStatusPresentation(status: .queued, headline: session.track.title, explanation: "Saved locally for retry", timestamp: session.startedAt, recoveryAction: .retryQueue)
+            case .skipped, .interrupted:
+                CaptureStatusPresentation(status: .excluded, headline: session.track.title, explanation: "Not enough listening time to scrobble", timestamp: session.startedAt)
+            case .active, .played, .listened:
+                CaptureStatusPresentation(status: .progressing, headline: session.track.title, explanation: "Listening activity detected", timestamp: session.startedAt)
+            }
+        }
+    }
+
+    func performCaptureRecovery(_ action: CaptureStatusPresentation.RecoveryAction) {
+        switch action {
+        case .grantPlaybackPermission:
+            openAutomationSettings()
+        case .reconnectLastFM, .openSettings:
+            openSettings(.integrations)
+        case .retryQueue:
+            navigate(to: .queue)
+        case .disablePrivateMode:
+            endPrivateMode()
+        }
     }
     var playbackServiceName: String {
         if demoModeEnabled { return "Demo Playback" }
