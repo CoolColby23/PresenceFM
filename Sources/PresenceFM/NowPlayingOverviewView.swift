@@ -178,8 +178,8 @@ private struct CaptureConfidenceContent: View {
                     .accessibilityLabel("Scrobble eligibility")
                     .accessibilityValue(progress.formatted(.percent.precision(.fractionLength(0))))
             }
-            if presentation.recoveryAction != nil {
-                Button(presentation.recoveryAction!.buttonTitle, action: recovery)
+            if let action = presentation.recoveryAction {
+                Button(action.buttonTitle, action: recovery)
                     .buttonStyle(.borderless)
             }
         }

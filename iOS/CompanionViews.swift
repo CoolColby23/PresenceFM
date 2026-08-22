@@ -302,8 +302,9 @@ struct HistoricalScrobbleSelectionView: View {
         .safeAreaInset(edge: .bottom) {
             Button {
                 isSubmitting = true
+                let submittedIDs = visibleSelectedIDs
                 Task {
-                    await model.approveHistoricalImports(ids: selectedIDs)
+                    await model.approveHistoricalImports(ids: submittedIDs)
                     isSubmitting = false
                     if model.historicalImportItems.isEmpty { dismiss() }
                     selectedIDs.formIntersection(Set(model.historicalImportItems.map(\.id)))
@@ -312,12 +313,12 @@ struct HistoricalScrobbleSelectionView: View {
                 if isSubmitting {
                     ProgressView().frame(maxWidth: .infinity)
                 } else {
-                    Text("Scrobble \(selectedIDs.count) Selected").frame(maxWidth: .infinity)
+                    Text("Scrobble \(visibleSelectedIDs.count) Selected").frame(maxWidth: .infinity)
                 }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(selectedIDs.isEmpty || isSubmitting)
+            .disabled(visibleSelectedIDs.isEmpty || isSubmitting)
             .padding()
             .background(.bar)
         }
@@ -337,6 +338,10 @@ struct HistoricalScrobbleSelectionView: View {
 
     private var allVisibleSelected: Bool {
         !filteredItems.isEmpty && filteredItems.allSatisfy { selectedIDs.contains($0.id) }
+    }
+
+    private var visibleSelectedIDs: Set<String> {
+        selectedIDs.intersection(Set(filteredItems.map(\.id)))
     }
 
     private func toggle(_ id: String) {

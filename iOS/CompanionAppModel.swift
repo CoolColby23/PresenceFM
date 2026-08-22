@@ -262,18 +262,21 @@ final class CompanionAppModel {
         }
     }
 
-    func approve(_ listen: CanonicalListen) async {
+    func approve(_ listen: CanonicalListen, refreshHistory: Bool = true) async {
         do {
             try await store.setState(.queued, for: listen.id); await reload();
-            if let updated = history.first(where: { $0.id == listen.id }) { await submit(updated) }
+            if let updated = history.first(where: { $0.id == listen.id }) {
+                await submit(updated, refreshHistory: refreshHistory)
+            }
         } catch { show(error) }
     }
     func dismiss(_ listen: CanonicalListen) async { do { try await store.setState(.dismissed, for: listen.id); await reload() } catch { show(error) } }
     func approveAll() async { for item in reviewItems where item.canonicalMetadata.startedAt != nil { await approve(item) } }
     func approveHistoricalImports(ids: Set<String>) async {
         for item in historicalImportItems where ids.contains(item.id) {
-            await approve(item)
+            await approve(item, refreshHistory: false)
         }
+        await refreshLastFMHistory()
     }
     func dismissAll() async { for item in reviewItems { await dismiss(item) } }
     func saveCorrection(id: String, title: String, artist: String, album: String?) async {
@@ -437,14 +440,14 @@ final class CompanionAppModel {
         for listen in snapshot.listens.filter({ $0.state == .queued }) { await submit(listen) }
     }
 
-    private func submit(_ listen: CanonicalListen) async {
+    private func submit(_ listen: CanonicalListen, refreshHistory: Bool = true) async {
         guard !snapshot.privateMode, let cloud, let lastFM else { return }
         do {
             let lease = try await cloud.acquireLease(for: listen.id); try await store.setState(.submitting, for: listen.id)
             do {
                 try await lastFM.scrobble(listen.canonicalMetadata); let date = Date()
                 try await cloud.complete(lease, result: .accepted(date)); try await store.setState(.submitted, for: listen.id, submittedAt: date)
-                await refreshLastFMHistory()
+                if refreshHistory { await refreshLastFMHistory() }
             } catch {
                 try? await cloud.complete(lease, result: .deferred("Submission failed; retry is required.")); try await store.setState(.queued, for: listen.id)
                 throw error
@@ -499,7 +502,7 @@ final class CompanionAppModel {
 
     private static func durationText(_ interval: TimeInterval) -> String {
         let seconds = max(0, Int(interval.rounded(.up)))
-        return seconds >= 60 ? "(seconds / 60)m (seconds % 60)s" : "(seconds)s"
+        return seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
     }
 
     private func isLikelyOnLastFM(_ listen: CanonicalListen) -> Bool {

@@ -42,12 +42,12 @@ button. MusicKit does not expose a complete event log: its list can omit older
 history and can collapse repeated plays of the same song into one last-played
 entry, so the UI must not describe this import as complete Apple Music history.
 
-| Scenario | Observed | Submitted | Review | Missed | Duplicate | Evidence / notes |
-| --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Foreground playback | — | — | — | — | — | Physical device required |
-| Locked / suspended | — | — | — | — | — | Physical device required |
-| Force-quit then relaunch | — | — | — | — | — | Physical device required |
-| Offline then reconnect | — | — | — | — | — | Physical device required |
-| Repeat and seek | — | — | — | — | — | Physical device required |
-| Local Music file | — | — | — | — | — | Physical device required |
-| Simultaneous Mac / iPhone | — | — | — | — | — | Cloud-enabled build required |
+| Scenario | Observed | Reconciled | Uncertain | Submitted | Missed | Duplicate | Evidence / notes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Foreground playback | — | — | — | — | — | — | Physical device required |
+| Locked / suspended | — | — | — | — | — | — | Physical device required |
+| Force-quit then relaunch | — | — | — | — | — | — | Physical device required |
+| Offline then reconnect | — | — | — | — | — | — | Physical device required |
+| Repeat and seek | — | — | — | — | — | — | Physical device required |
+| Local Music file | — | — | — | — | — | — | Physical device required |
+| Simultaneous Mac / iPhone | — | — | — | — | — | — | Cloud-enabled build required |

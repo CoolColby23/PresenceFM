@@ -843,11 +843,11 @@ final class AppModel {
             switch session.outcome {
             case .submitted:
                 CaptureStatusPresentation(status: .submitted, headline: session.track.title, explanation: "Submitted to Last.fm", timestamp: session.startedAt)
-            case .queued, .failed:
+            case .queued, .failed, .played:
                 CaptureStatusPresentation(status: .queued, headline: session.track.title, explanation: "Saved locally for retry", timestamp: session.startedAt, recoveryAction: .retryQueue)
             case .skipped, .interrupted:
                 CaptureStatusPresentation(status: .excluded, headline: session.track.title, explanation: "Not enough listening time to scrobble", timestamp: session.startedAt)
-            case .active, .played, .listened:
+            case .active, .listened:
                 CaptureStatusPresentation(status: .progressing, headline: session.track.title, explanation: "Listening activity detected", timestamp: session.startedAt)
             }
         }
