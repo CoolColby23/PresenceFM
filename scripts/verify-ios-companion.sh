@@ -34,6 +34,7 @@ if ! PRESENCEFM_REQUIRE_LOCAL_CONFIG=NO xcodebuild \
     ARCHS="$(uname -m)" \
     ONLY_ACTIVE_ARCH=YES \
     CODE_SIGNING_ALLOWED=NO \
+    PRESENCEFM_REQUIRE_LOCAL_CONFIG=NO \
     build >"$BUILD_LOG" 2>&1; then
   tail -n 200 "$BUILD_LOG" >&2
   exit 1
