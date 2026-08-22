@@ -38,14 +38,14 @@ path. The concise recording plan is in
 The original submission checklist is retained in
 [Documentation/BUILD-WEEK-FINAL-SUBMISSION.md](Documentation/BUILD-WEEK-FINAL-SUBMISSION.md) as project history.
 
-## Version 1.1
+## Road to version 1.2
 
-The repository builds as `1.1.0`. GitHub Releases use two channels:
+The v1.2 work adds user-confirmed Apple Music history scrobbling on iPhone and a shared scrobble-confidence model across both apps. GitHub Releases use two channels:
 
 - **Production** — tags like `v1.1.0` publish as Latest and update the Sparkle appcast.
 - **Pre-release** — tags like `v1.1.0-beta.1` or `v1.1.0-rc.1` publish as Pre-release and never replace Latest.
 
-Until a 1.1 production tag is published, GitHub's Latest release remains the stable download (currently 0.4.0). See [CONTRIBUTING.md](CONTRIBUTING.md) for the release ladder.
+The `VERSION` file is the source of truth for release builds and tags. See [CONTRIBUTING.md](CONTRIBUTING.md) for the release ladder.
 
 ### Highlights
 
@@ -131,3 +131,9 @@ See [PLAN.md](PLAN.md) for planned work, plus [PRIVACY.md](PRIVACY.md),
 [SECURITY.md](SECURITY.md), [SUPPORT.md](SUPPORT.md), and
 [CONTRIBUTING.md](CONTRIBUTING.md). Release history is maintained in
 [CHANGELOG.md](CHANGELOG.md).
+
+## Open source
+
+PresenceFM is available under the [MIT License](LICENSE). Bug reports, focused fixes, accessibility improvements, provider reliability work, and documentation contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and please use private vulnerability reporting for security issues.
+
+Third-party software and service marks remain subject to their respective terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

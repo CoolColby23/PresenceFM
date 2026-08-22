@@ -26,6 +26,8 @@ jobs:
       - name: Check patch hygiene
         run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
         if: github.event_name == 'pull_request'
+      - name: Scan tracked files for credentials
+        run: ./scripts/scan-repository-secrets.sh
       - name: Verify formatting of new Swift files
         run: ./scripts/verify-swift-format.sh
       - name: Test

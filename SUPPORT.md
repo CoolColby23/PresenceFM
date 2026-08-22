@@ -6,6 +6,8 @@ Unsigned builds may require approval in **System Settings → Privacy & Security
 
 Apple Music and Spotify are detected automatically. YouTube Music requires YTMDesktop 2 with its local Companion Server and companion authorization enabled. TIDAL is detected through macOS Now Playing metadata and is best effort because TIDAL does not expose a public macOS playback API. Include the affected player and its version in provider reports.
 
+For iPhone companion reports, include the iOS version, whether Music access is granted, the history-import filter used, and the status shown for the affected song. Do not attach screenshots containing Last.fm credentials. Because iOS can suspend apps in the background, distinguish a historical import result from a continuously observed play when describing the issue.
+
 ## Uninstall and local data
 
 Before removing PresenceFM, turn off **Launch PresenceFM at login** in Settings.
