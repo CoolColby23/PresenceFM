@@ -24,7 +24,7 @@ fi
 rm -rf "$DERIVED_DATA"
 BUILD_LOG="$(mktemp -t presencefm-ios-build).log"
 trap 'rm -f "$BUILD_LOG"' EXIT
-if ! xcodebuild \
+if ! PRESENCEFM_REQUIRE_LOCAL_CONFIG=NO xcodebuild \
     -project "$ROOT/PresenceFMiOS.xcodeproj" \
     -scheme PresenceFMiOS \
     -configuration Debug \
@@ -33,6 +33,7 @@ if ! xcodebuild \
     -derivedDataPath "$DERIVED_DATA" \
     ARCHS="$(uname -m)" \
     ONLY_ACTIVE_ARCH=YES \
+    CODE_SIGNING_ALLOWED=NO \
     build >"$BUILD_LOG" 2>&1; then
   tail -n 200 "$BUILD_LOG" >&2
   exit 1
