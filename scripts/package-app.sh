@@ -28,6 +28,18 @@ RESOURCE_BUNDLE="$BIN_DIR/PresenceFM_PresenceFM.bundle"
   exit 1
 }
 cp -R "$RESOURCE_BUNDLE" "$CONTENTS/Resources/PresenceFM_PresenceFM.bundle"
+PACKAGED_RESOURCE_BUNDLE="$CONTENTS/Resources/PresenceFM_PresenceFM.bundle"
+# Xcode 26's SwiftPM command-line build can emit a flat resource directory
+# without bundle metadata. `Bundle.module` cannot open that directory and traps
+# during launch. Preserve the flat resource layout while adding the minimum
+# metadata Foundation needs to recognize it as a bundle.
+if [[ ! -f "$PACKAGED_RESOURCE_BUNDLE/Contents/Info.plist" && ! -f "$PACKAGED_RESOURCE_BUNDLE/Info.plist" ]]; then
+  plutil -create xml1 "$PACKAGED_RESOURCE_BUNDLE/Info.plist"
+  plutil -insert CFBundleIdentifier -string fm.presence.PresenceFM.resources "$PACKAGED_RESOURCE_BUNDLE/Info.plist"
+  plutil -insert CFBundleName -string PresenceFM_PresenceFM "$PACKAGED_RESOURCE_BUNDLE/Info.plist"
+  plutil -insert CFBundlePackageType -string BNDL "$PACKAGED_RESOURCE_BUNDLE/Info.plist"
+  plutil -insert CFBundleInfoDictionaryVersion -string 6.0 "$PACKAGED_RESOURCE_BUNDLE/Info.plist"
+fi
 "$ROOT/scripts/generate-app-intents-metadata.sh" "$CONTENTS/Resources"
 
 plutil -create xml1 "$CONTENTS/Info.plist"
