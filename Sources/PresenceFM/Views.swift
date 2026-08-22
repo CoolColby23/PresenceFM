@@ -118,11 +118,15 @@ private struct SidebarNavigationRow: View {
     let section: DashboardSection
     let selected: Bool
     @Environment(\.appTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Label(section.title, systemImage: section.symbol)
             .font(.callout.weight(.semibold))
-            .foregroundStyle(selected ? theme.onPrimaryColor : .primary)
+            // The row background is a translucent tint rather than a solid fill,
+            // so the selected label needs a contrast-checked accent instead of
+            // `onPrimaryColor`, which assumes an opaque primary background.
+            .foregroundStyle(selected ? theme.readablePrimary(for: colorScheme) : .primary)
             .padding(.vertical, 4)
             .listRowBackground(
                 RoundedRectangle(cornerRadius: BrandRadius.md, style: .continuous)
@@ -829,36 +833,20 @@ struct QueueView: View {
                 Divider()
             }
             List {
+                if !queuedRecords.isEmpty {
+                    QueueSummaryHeader(records: queuedRecords)
+                        .listRowSeparator(.hidden)
+                }
                 ForEach(queuedRecords) { record in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(record.title).font(.headline).lineLimit(1)
-                            Text(record.artist).foregroundStyle(.secondary).lineLimit(1)
-                            if let error = record.lastError, error != commonError {
-                                Text(error).font(.caption).foregroundStyle(BrandColors.error).lineLimit(2)
-                            }
-                        }
-                        Spacer()
-                        Text(record.stateRaw.queueDisplayName).foregroundStyle(.secondary)
-                        Menu("Actions", systemImage: "ellipsis.circle") {
-                            if record.state == .permanentlyFailed {
-                                Button("Edit and Retry…") { requestCorrection(of: record) }
-                                Button("Retry Without Changes") { model.retryScrobble(id: record.id) }
-                            }
-                            Button("Remove…", role: .destructive) { requestRemoval(of: record) }
-                        }
-                        .menuIndicator(.hidden)
-                        .accessibilityLabel("Actions for \(record.title)")
+                    QueueRow(record: record, showsInlineError: record.lastError != commonError) {
+                        queueActions(for: record)
                     }
-                    .contextMenu {
-                        if record.state == .permanentlyFailed {
-                            Button("Edit and Retry…") { requestCorrection(of: record) }
-                            Button("Retry Without Changes") { model.retryScrobble(id: record.id) }
-                        }
-                        Button("Remove…", role: .destructive) { requestRemoval(of: record) }
-                    }
+                    .listRowSeparator(.visible)
+                    .contextMenu { queueActions(for: record) }
                 }
             }
+            .listStyle(.inset)
+            .scrollContentBackground(.hidden)
             .accessibilityIdentifier("queue.list")
         }
         .navigationTitle("Pending Plays")
@@ -904,6 +892,15 @@ struct QueueView: View {
 
     private var queuedRecords: [ScrobbleRecord] { records.filter { $0.state != .submitted } }
 
+    @ViewBuilder
+    private func queueActions(for record: ScrobbleRecord) -> some View {
+        if record.state == .permanentlyFailed {
+            Button("Edit and Retry…", systemImage: "pencil") { requestCorrection(of: record) }
+            Button("Retry Without Changes", systemImage: "arrow.clockwise") { model.retryScrobble(id: record.id) }
+        }
+        Button("Remove…", systemImage: "trash", role: .destructive) { requestRemoval(of: record) }
+    }
+
     private var commonError: String? {
         let errors = queuedRecords.compactMap(\.lastError)
         guard let first = errors.first, errors.count == queuedRecords.count, errors.allSatisfy({ $0 == first }) else { return nil }
@@ -927,6 +924,109 @@ struct QueueView: View {
 private struct QueueRemoval: Identifiable {
     let id: UUID
     let title: String
+}
+
+private struct QueueSummaryHeader: View {
+    let records: [ScrobbleRecord]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("\(records.count) \(records.count == 1 ? "play is" : "plays are") waiting for Last.fm")
+                .font(BrandTypography.cardTitle)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var detail: String {
+        let blocked = records.filter { $0.state == .permanentlyFailed }.count
+        guard blocked > 0 else { return "PresenceFM keeps retrying these in the background." }
+        return "\(blocked) need\(blocked == 1 ? "s" : "") a correction before it can be submitted."
+    }
+}
+
+private struct QueueRow<Actions: View>: View {
+    let record: ScrobbleRecord
+    let showsInlineError: Bool
+    @ViewBuilder let actions: () -> Actions
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 32, height: 32)
+                .background(tint.opacity(0.12), in: .rect(cornerRadius: 9))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(record.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(record.album.map { "\(record.artist) • \($0)" } ?? record.artist)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if showsInlineError, let error = record.lastError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(BrandColors.error)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 6) {
+                Text(record.stateRaw.queueDisplayName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(tint.opacity(0.11), in: .capsule)
+                Text(timingDetail)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 124, alignment: .trailing)
+            Menu("Actions", systemImage: "ellipsis.circle", content: actions)
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .labelStyle(.iconOnly)
+                .fixedSize()
+                .accessibilityLabel("Actions for \(record.title)")
+        }
+        .padding(.vertical, 8)
+        .contentShape(.rect)
+    }
+
+    private var timingDetail: String {
+        if record.state == .retrying, record.nextAttemptAt > .now {
+            return "Retry \(record.nextAttemptAt.formatted(date: .omitted, time: .shortened))"
+        }
+        return record.startedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+
+    private var symbol: String {
+        switch record.state {
+        case .pending: "clock"
+        case .retrying: "arrow.clockwise"
+        case .permanentlyFailed: "exclamationmark.triangle.fill"
+        case .submitted: "checkmark.circle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch record.state {
+        case .pending: theme.primaryColor
+        case .retrying: BrandColors.warning
+        case .permanentlyFailed: BrandColors.error
+        case .submitted: BrandColors.success
+        }
+    }
 }
 
 private struct QueueRecoveryBanner: View {

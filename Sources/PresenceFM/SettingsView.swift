@@ -133,14 +133,23 @@ struct SettingsView: View {
                         .foregroundStyle(selection.wrappedValue == category ? theme.onPrimaryColor : Color.primary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
+                        // Tint the selection with the active theme rather than the
+                        // system accent so it stays legible against `onPrimaryColor`.
                         .background(
-                            selection.wrappedValue == category ? AnyShapeStyle(Color.accentColor.gradient) : AnyShapeStyle(Color.clear),
+                            selection.wrappedValue == category ? AnyShapeStyle(theme.primaryColor.gradient) : AnyShapeStyle(Color.clear),
                             in: .rect(cornerRadius: 8)
                         )
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.category.\(category.id)")
+                }
+                if filteredSettingsCategories.isEmpty {
+                    Text("No settings match “\(settingsSearchText)”.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.top, 6)
                 }
             }
             .padding(12)
