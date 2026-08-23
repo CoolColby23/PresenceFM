@@ -150,6 +150,24 @@ struct LastFMOnboardingView: View {
 
 struct LastFMHomeView: View {
     let model: CompanionAppModel
+    @State private var searchText = ""
+
+    /// Scrobble history pages in from Last.fm and grows without bound, so the
+    /// list needs a way to find one play without scrolling to it.
+    private var visibleTracks: [CompanionLastFMTrack] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return model.lastFMTracks }
+        return model.lastFMTracks.filter { track in
+            [track.title, track.artist, track.album ?? ""].contains {
+                $0.localizedCaseInsensitiveContains(query)
+            }
+        }
+    }
+
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         List {
             Section {
@@ -207,15 +225,29 @@ struct LastFMHomeView: View {
                         Spacer()
                     }
                     .listRowSeparator(.hidden)
-                } else if model.lastFMTracks.isEmpty {
-                    ContentUnavailableView("No scrobbles yet", systemImage: "waveform", description: Text("Your Last.fm history will appear here."))
-                        .listRowSeparator(.hidden)
+                } else if visibleTracks.isEmpty {
+                    ContentUnavailableView(
+                        isSearching ? "No Matching Scrobbles" : "No scrobbles yet",
+                        systemImage: isSearching ? "magnifyingglass" : "waveform",
+                        description: Text(
+                            isSearching
+                                ? "No loaded scrobbles match “\(searchText)”. Pull to refresh to load more."
+                                : "Your Last.fm history will appear here."
+                        )
+                    )
+                    .listRowSeparator(.hidden)
                 } else {
-                    ForEach(model.lastFMTracks) { track in LastFMTrackRow(track: track) }
+                    ForEach(visibleTracks) { track in LastFMTrackRow(track: track) }
                 }
             } header: {
                 CompanionSectionHeader(title: model.lastFMUsername ?? "Last.fm") {
-                    if model.isLoadingLastFMHistory { ProgressView().controlSize(.small) }
+                    if model.isLoadingLastFMHistory {
+                        ProgressView().controlSize(.small)
+                    } else if isSearching {
+                        Text("\(visibleTracks.count) of \(model.lastFMTracks.count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(CompanionBrand.secondaryText)
+                    }
                 }
             } footer: {
                 if let issue = model.captureIssue {
@@ -236,6 +268,7 @@ struct LastFMHomeView: View {
         .companionCanvas()
         .listStyle(.insetGrouped)
         .navigationTitle("Scrobbles")
+        .searchable(text: $searchText, prompt: "Search title, artist, or album")
         .refreshable { await model.refreshLastFMHistory() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -529,7 +562,18 @@ struct CompanionCaptureStatusCard: View {
             }
         }
         .companionCard()
+        // The pill, headline, explanation, and progress are one statement, so
+        // VoiceOver reads them as one stop instead of four fragments. The
+        // recovery button stays separately focusable.
         .accessibilityElement(children: .contain)
+        .accessibilityRepresentation {
+            VStack {
+                Text(presentation.accessibilitySummary)
+                if let action = presentation.recoveryAction {
+                    Button(action.buttonTitle) { Task { await model.performCaptureRecovery(action) } }
+                }
+            }
+        }
     }
 }
 
@@ -537,32 +581,34 @@ struct CompanionCaptureActivityView: View {
     let model: CompanionAppModel
 
     var body: some View {
-        List {
-            if model.recentCaptureActivity.isEmpty {
+        // Read once: the model derives this list on every access.
+        let activity = model.recentCaptureActivity
+        return List {
+            if activity.isEmpty {
                 ContentUnavailableView(
                     "No captured plays yet",
                     systemImage: "waveform.badge.magnifyingglass",
                     description: Text("PresenceFM will explain captured, queued, private, and uncertain plays here.")
                 )
             }
-            ForEach(Array(model.recentCaptureActivity.enumerated()), id: \.offset) { _, activity in
+            ForEach(activity) { entry in
                 HStack(alignment: .top, spacing: CompanionSpacing.md) {
-                    Image(systemName: activity.status.symbol)
+                    Image(systemName: entry.status.symbol)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(activity.status.tint)
+                        .foregroundStyle(entry.status.tint)
                         .frame(width: 30, height: 30)
-                        .background(activity.status.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: CompanionRadius.sm, style: .continuous))
+                        .background(entry.status.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: CompanionRadius.sm, style: .continuous))
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(activity.headline)
+                        Text(entry.headline)
                             .font(.subheadline.weight(.semibold))
-                        Text(activity.explanation)
+                        Text(entry.explanation)
                             .font(.caption)
                             .foregroundStyle(CompanionBrand.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: CompanionSpacing.xs)
-                    if let timestamp = activity.timestamp {
+                    if let timestamp = entry.timestamp {
                         Text(timestamp, style: .relative)
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)
@@ -570,6 +616,7 @@ struct CompanionCaptureActivityView: View {
                 }
                 .padding(.vertical, 4)
                 .accessibilityElement(children: .combine)
+                .accessibilityLabel(entry.accessibilitySummary)
             }
             if !model.reviewItems.isEmpty {
                 Section("Needs review") {
@@ -591,50 +638,16 @@ struct CompanionCaptureActivityView: View {
     }
 }
 
+// Titles, symbols, and tone come from `PresenceFMCore` so the iPhone and Mac
+// apps describe the same situation identically. Only the palette is local.
 private extension CaptureStatusPresentation.Status {
-    var title: String {
-        switch self {
-        case .detecting: "Listening"
-        case .progressing: "In progress"
-        case .queued: "Queued"
-        case .submitted: "Scrobbled"
-        case .excluded: "Not eligible"
-        case .privateMode: "Private Mode"
-        case .needsAttention: "Needs attention"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .detecting: "waveform.badge.magnifyingglass"
-        case .progressing: "waveform"
-        case .queued: "tray.full"
-        case .submitted: "checkmark.circle.fill"
-        case .excluded: "nosign"
-        case .privateMode: "eye.slash.fill"
-        case .needsAttention: "exclamationmark.triangle.fill"
-        }
-    }
-
     var tint: Color {
-        switch self {
-        case .submitted: .green
-        case .detecting, .progressing: CompanionBrand.electricBlue
-        case .queued, .privateMode: .orange
-        case .excluded: .secondary
-        case .needsAttention: .red
-        }
-    }
-}
-
-private extension CaptureStatusPresentation.RecoveryAction {
-    var buttonTitle: String {
-        switch self {
-        case .grantPlaybackPermission: "Grant Permission"
-        case .reconnectLastFM: "Reconnect Last.fm"
-        case .retryQueue: "Retry Queue"
-        case .disablePrivateMode: "End Private Mode"
-        case .openSettings: "Check Again"
+        switch tone {
+        case .positive: .green
+        case .active: CompanionBrand.electricBlue
+        case .paused: .orange
+        case .neutral: .secondary
+        case .critical: .red
         }
     }
 }

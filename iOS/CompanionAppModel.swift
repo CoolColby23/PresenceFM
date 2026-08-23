@@ -55,11 +55,16 @@ final class CompanionAppModel {
             )
         }
         if musicAuthorization != .authorized {
+            // Once access is denied, `MusicAuthorization.request()` resolves to
+            // denied again without prompting, so the only real fix is Settings.
+            let denied = musicAuthorization == .denied || musicAuthorization == .restricted
             return CaptureStatusPresentation(
                 status: .needsAttention,
                 headline: "Apple Music access needed",
-                explanation: "Allow Music access so PresenceFM can identify and qualify plays.",
-                recoveryAction: .grantPlaybackPermission
+                explanation: denied
+                    ? "Music access is turned off for PresenceFM. Turn it back on in Settings so plays can be identified."
+                    : "Allow Music access so PresenceFM can identify and qualify plays.",
+                recoveryAction: denied ? .openSettings : .grantPlaybackPermission
             )
         }
         if snapshot.privateMode {
@@ -75,7 +80,7 @@ final class CompanionAppModel {
                 status: .needsAttention,
                 headline: "Capture needs attention",
                 explanation: captureIssue,
-                recoveryAction: .openSettings
+                recoveryAction: .recheckNow
             )
         }
         guard let evidence = nowPlaying else {
@@ -130,7 +135,7 @@ final class CompanionAppModel {
                 headline: "This play needs review",
                 explanation: reviewExplanation(listen?.reviewReason),
                 timestamp: evidence.capturedAt,
-                recoveryAction: .openSettings
+                recoveryAction: .recheckNow
             )
         case .failed:
             return CaptureStatusPresentation(
@@ -163,7 +168,7 @@ final class CompanionAppModel {
             case .ineligible(let reason):
                 return CaptureStatusPresentation(status: .excluded, headline: "This play will not scrobble", explanation: reason, timestamp: evidence.capturedAt)
             case .review(let reason):
-                return CaptureStatusPresentation(status: .needsAttention, headline: "This play needs review", explanation: reviewExplanation(reason), timestamp: evidence.capturedAt, recoveryAction: .openSettings)
+                return CaptureStatusPresentation(status: .needsAttention, headline: "This play needs review", explanation: reviewExplanation(reason), timestamp: evidence.capturedAt, recoveryAction: .recheckNow)
             }
         }
     }
@@ -412,8 +417,14 @@ final class CompanionAppModel {
             await drainQueue()
         case .disablePrivateMode:
             await setPrivateMode(false)
-        case .openSettings:
+        case .recheckNow:
             await reconcile()
+        case .openSettings:
+            // Nothing in-app to open: the states that offer this are resolved in
+            // iOS Settings, so the button is only shown when it can lead there.
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                await UIApplication.shared.open(url)
+            }
         }
     }
 

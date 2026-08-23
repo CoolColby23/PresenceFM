@@ -464,6 +464,19 @@ final class AppModel {
 
     func retryScrobble(id: UUID) { notifications.reset("queue-stuck"); queue.retry(id: id) }
     func removeScrobble(id: UUID) { queue.remove(id: id) }
+
+    @discardableResult
+    func retryAllScrobbles() -> Int {
+        notifications.reset("queue-stuck")
+        return queue.retryAll()
+    }
+
+    @discardableResult
+    func removeBlockedScrobbles() -> Int {
+        notifications.reset("queue-stuck")
+        return queue.removeAll(in: .permanentlyFailed)
+    }
+
     func correctScrobble(id: UUID, title: String, artist: String, album: String?) -> Bool {
         notifications.reset("queue-stuck")
         return queue.correct(id: id, title: title, artist: artist, album: album)
@@ -861,6 +874,11 @@ final class AppModel {
             openSettings(.integrations)
         case .retryQueue:
             navigate(to: .queue)
+        case .recheckNow:
+            // The Mac observes playback continuously, so the equivalent of the
+            // iPhone's re-scan is refreshing the integrations it depends on.
+            refreshDiscord()
+            Task { await refreshLastFMRemoteHistory(force: true) }
         case .disablePrivateMode:
             endPrivateMode()
         }

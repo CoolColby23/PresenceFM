@@ -817,11 +817,33 @@ struct RecentActivityView: View {
     }
 }
 
+/// Which pending plays the queue is showing. `.blocked` is the one that matters
+/// during recovery: those are the plays that will never move without a person.
+enum QueueFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case waiting = "Waiting"
+    case blocked = "Needs Attention"
+
+    var id: String { rawValue }
+
+    func includes(_ record: ScrobbleRecord) -> Bool {
+        switch self {
+        case .all: record.state != .submitted
+        case .waiting: record.state == .pending || record.state == .retrying
+        case .blocked: record.state == .permanentlyFailed
+        }
+    }
+}
+
 struct QueueView: View {
     @Environment(AppModel.self) private var model
     @Query(sort: \ScrobbleRecord.startedAt, order: .reverse) private var records: [ScrobbleRecord]
     @State private var pendingRemoval: QueueRemoval?
     @State private var correction: QueueCorrection?
+    @State private var filter: QueueFilter = .all
+    @State private var searchText = ""
+    @State private var confirmingRetryAll = false
+    @State private var confirmingRemoveBlocked = false
     var body: some View {
         VStack(spacing: 0) {
             if let commonError {
@@ -833,11 +855,18 @@ struct QueueView: View {
                 Divider()
             }
             List {
-                if !queuedRecords.isEmpty {
-                    QueueSummaryHeader(records: queuedRecords)
-                        .listRowSeparator(.hidden)
+                if !visibleRecords.isEmpty {
+                    QueueSummaryHeader(
+                        records: queuedRecords,
+                        blockedCount: blockedCount,
+                        nextAttemptAt: nextAttemptAt,
+                        showBlocked: blockedCount > 0 && filter != .blocked
+                    ) {
+                        filter = .blocked
+                    }
+                    .listRowSeparator(.hidden)
                 }
-                ForEach(queuedRecords) { record in
+                ForEach(visibleRecords) { record in
                     QueueRow(record: record, showsInlineError: record.lastError != commonError) {
                         queueActions(for: record)
                     }
@@ -848,16 +877,57 @@ struct QueueView: View {
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .accessibilityIdentifier("queue.list")
+            // Scoped to the list so a recovery banner above it stays readable
+            // while the current filter or search matches nothing.
+            .overlay { emptyState }
         }
         .navigationTitle("Pending Plays")
-        .overlay {
-            if queuedRecords.isEmpty {
-                ContentUnavailableView {
-                    Label("Everything Is Synced", systemImage: "checkmark.circle")
-                } description: {
-                    Text("If Last.fm is unavailable, finished plays wait here and retry automatically.")
+        .searchable(text: $searchText, prompt: "Search title, artist, or album")
+        .toolbar {
+            ToolbarItemGroup {
+                Picker("Show", selection: $filter) {
+                    ForEach(QueueFilter.allCases) { option in
+                        Text(option.rawValue).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
+                .disabled(queuedRecords.isEmpty)
+                Menu("More", systemImage: "ellipsis.circle") {
+                    Button("Retry All Now", systemImage: "arrow.clockwise") { confirmingRetryAll = true }
+                        .disabled(queuedRecords.isEmpty)
+                    Divider()
+                    Button("Remove All That Need Attention…", systemImage: "trash", role: .destructive) {
+                        confirmingRemoveBlocked = true
+                    }
+                    .disabled(blockedCount == 0)
                 }
             }
+        }
+        .confirmationDialog(
+            "Retry every pending play now?",
+            isPresented: $confirmingRetryAll,
+            titleVisibility: .visible
+        ) {
+            Button("Retry \(queuedRecords.count) \(queuedRecords.count == 1 ? "Play" : "Plays")") {
+                model.retryAllScrobbles()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This clears each play's backoff and error, including plays that previously stopped retrying.")
+        }
+        .confirmationDialog(
+            "Remove every play that needs attention?",
+            isPresented: $confirmingRemoveBlocked,
+            titleVisibility: .visible
+        ) {
+            Button("Remove \(blockedCount) \(blockedCount == 1 ? "Play" : "Plays")", role: .destructive) {
+                model.removeBlockedScrobbles()
+                if filter == .blocked { filter = .all }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("PresenceFM stops trying to scrobble them. Plays that are still retrying are kept.")
         }
         .confirmationDialog(
             "Remove this pending play?",
@@ -891,6 +961,56 @@ struct QueueView: View {
     }
 
     private var queuedRecords: [ScrobbleRecord] { records.filter { $0.state != .submitted } }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        if queuedRecords.isEmpty {
+            ContentUnavailableView {
+                Label("Everything Is Synced", systemImage: "checkmark.circle")
+            } description: {
+                Text("If Last.fm is unavailable, finished plays wait here and retry automatically.")
+            }
+        } else if visibleRecords.isEmpty {
+            ContentUnavailableView {
+                Label("No Matching Plays", systemImage: "line.3.horizontal.decrease.circle")
+            } description: {
+                Text(
+                    searchText.isEmpty
+                        ? "None of the \(queuedRecords.count) pending plays are in “\(filter.rawValue)”."
+                        : "No pending plays match “\(searchText)”."
+                )
+            } actions: {
+                Button("Show All Pending Plays") {
+                    filter = .all
+                    searchText = ""
+                }
+            }
+        }
+    }
+
+    private var visibleRecords: [ScrobbleRecord] {
+        let matchingFilter = records.filter(filter.includes)
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return matchingFilter }
+        return matchingFilter.filter { record in
+            [record.title, record.artist, record.album ?? ""].contains {
+                $0.localizedCaseInsensitiveContains(query)
+            }
+        }
+    }
+
+    private var blockedCount: Int {
+        queuedRecords.count { $0.state == .permanentlyFailed }
+    }
+
+    /// The soonest automatic retry, so the summary can say when the queue moves
+    /// on its own rather than implying the person has to do something.
+    private var nextAttemptAt: Date? {
+        queuedRecords
+            .filter { $0.state == .pending || $0.state == .retrying }
+            .map(\.nextAttemptAt)
+            .min()
+    }
 
     @ViewBuilder
     private func queueActions(for record: ScrobbleRecord) -> some View {
@@ -928,24 +1048,43 @@ private struct QueueRemoval: Identifiable {
 
 private struct QueueSummaryHeader: View {
     let records: [ScrobbleRecord]
+    let blockedCount: Int
+    let nextAttemptAt: Date?
+    let showBlocked: Bool
+    let revealBlocked: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("\(records.count) \(records.count == 1 ? "play is" : "plays are") waiting for Last.fm")
-                .font(BrandTypography.cardTitle)
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(records.count) \(records.count == 1 ? "play is" : "plays are") waiting for Last.fm")
+                    .font(BrandTypography.cardTitle)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 0)
+            if showBlocked {
+                Button("Show \(blockedCount)", action: revealBlocked)
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Show the \(blockedCount) plays that need attention")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 6)
-        .accessibilityElement(children: .combine)
     }
 
     private var detail: String {
-        let blocked = records.filter { $0.state == .permanentlyFailed }.count
-        guard blocked > 0 else { return "PresenceFM keeps retrying these in the background." }
-        return "\(blocked) need\(blocked == 1 ? "s" : "") a correction before it can be submitted."
+        guard blockedCount == 0 else {
+            return "\(blockedCount) need\(blockedCount == 1 ? "s" : "") a correction before "
+                + "\(blockedCount == 1 ? "it" : "they") can be submitted."
+        }
+        guard let nextAttemptAt, nextAttemptAt > .now else {
+            return "PresenceFM keeps retrying these in the background."
+        }
+        let time = nextAttemptAt.formatted(date: .omitted, time: .shortened)
+        return "PresenceFM retries in the background. Next attempt around \(time)."
     }
 }
 

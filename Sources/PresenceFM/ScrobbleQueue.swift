@@ -43,6 +43,17 @@ final class ScrobbleQueue {
 
     func retry(id: UUID) { if store.retryScrobble(id: id, now: clock.now) { Task { await process() } } }
     func remove(id: UUID) { store.removeScrobble(id: id) }
+
+    @discardableResult
+    func retryAll() -> Int {
+        let count = store.retryAllScrobbles(now: clock.now)
+        if count > 0 { Task { await process() } }
+        return count
+    }
+
+    @discardableResult
+    func removeAll(in state: QueueState) -> Int { store.removeScrobbles(in: state) }
+
     func correct(id: UUID, title: String, artist: String, album: String?) -> Bool {
         guard store.correctScrobble(
             id: id,

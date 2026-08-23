@@ -45,6 +45,11 @@ Record the app version, macOS version, and pass/fail evidence for every item. Do
 - Exercise retry and remove actions on failed queue records.
 - Correct a permanently rejected scrobble, confirm blank title/artist cannot be saved, then verify the corrected metadata submits once with its original listen time.
 - Search recent activity by title, artist, and album; confirm empty and no-match states are distinct.
+- In Pending Plays, switch between All, Waiting, and Needs Attention; confirm counts match the visible rows and that a filter matching nothing shows a no-match state with a working Show All action while any recovery banner stays readable.
+- Search Pending Plays by title, artist, and album, and confirm search combines with the active filter.
+- With a mix of waiting, backed-off, blocked, and submitted plays, choose Retry All Now; confirm every unsubmitted play returns to Waiting with its error cleared, that submitted plays are untouched, and that submission is attempted immediately.
+- Choose Remove All That Need Attention, cancel once, then confirm; verify only blocked plays are removed and plays still retrying remain queued.
+- Confirm the summary header names the next automatic retry time when nothing is blocked, and offers a jump to blocked plays when some are.
 
 ## Notifications and recovery
 
