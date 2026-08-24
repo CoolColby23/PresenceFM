@@ -138,6 +138,14 @@ final class CompanionAppModel {
                 recoveryAction: .recheckNow
             )
         case .failed:
+            if let reason = listen?.failureReason {
+                return CaptureStatusPresentation(
+                    status: .excluded,
+                    headline: "Last.fm would not accept this play",
+                    explanation: "\(reason) Editing the track details lets PresenceFM try again.",
+                    timestamp: evidence.capturedAt
+                )
+            }
             return CaptureStatusPresentation(
                 status: .needsAttention,
                 headline: "Submission failed",
@@ -179,6 +187,8 @@ final class CompanionAppModel {
             let status: CaptureStatusPresentation.Status
             switch listen.state {
             case .submitted: status = .submitted; explanation = "Submitted to Last.fm"
+            case .failed where listen.failureReason != nil:
+                status = .excluded; explanation = listen.failureReason ?? ""
             case .queued, .submitting, .failed: status = .queued; explanation = "Saved locally for retry"
             case .review: status = .needsAttention; explanation = reviewExplanation(listen.reviewReason)
             case .privateListen: status = .privateMode; explanation = "Kept private"
@@ -459,6 +469,12 @@ final class CompanionAppModel {
                 try await lastFM.scrobble(listen.canonicalMetadata); let date = Date()
                 try await cloud.complete(lease, result: .accepted(date)); try await store.setState(.submitted, for: listen.id, submittedAt: date)
                 if refreshHistory { await refreshLastFMHistory() }
+            } catch let rejection as CompanionLastFMError where rejection.isTerminal {
+                // Retrying cannot change the outcome, so the play stops here with
+                // the reason attached instead of cycling through the queue forever.
+                try? await cloud.complete(lease, result: .deferred(rejection.localizedDescription))
+                try await store.setState(.failed, for: listen.id, failureReason: rejection.localizedDescription)
+                throw rejection
             } catch {
                 try? await cloud.complete(lease, result: .deferred("Submission failed; retry is required.")); try await store.setState(.queued, for: listen.id)
                 throw error
@@ -507,6 +523,7 @@ final class CompanionAppModel {
         case .conflictingMetadata: "Music reported conflicting track details."
         case .beforeBaseline: "The play began before capture was established."
         case .historicalImport: "Apple Music reports this as recently played. Select it to scrobble it."
+        case .unrecognized: "This play was flagged by a newer version of PresenceFM."
         case .none: "PresenceFM needs confirmation before submitting this play."
         }
     }

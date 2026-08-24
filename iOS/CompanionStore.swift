@@ -30,10 +30,34 @@ actor CompanionStore {
         let legacyURL = applicationSupport.appendingPathComponent("PresenceFMCompanion", isDirectory: true).appendingPathComponent("ledger.json")
         self.fileURL = fileURL ?? currentURL
         let readableURL = fileURL ?? ([currentURL, legacyURL].first { FileManager.default.isReadableFile(atPath: $0.path) } ?? currentURL)
-        if let data = try? Data(contentsOf: readableURL), let decoded = try? JSONDecoder.companion.decode(CompanionSnapshot.self, from: data) {
-            snapshot = decoded
+        if let data = try? Data(contentsOf: readableURL) {
+            if let decoded = try? JSONDecoder.companion.decode(CompanionSnapshot.self, from: data) {
+                snapshot = decoded
+            } else {
+                // A ledger this build cannot read is not an empty ledger. Starting
+                // from `.empty` here would let the next persist() overwrite real
+                // listens, so set the file aside first and keep it recoverable.
+                snapshot = .empty
+                quarantinedLedgerURL = Self.quarantine(readableURL)
+            }
         } else {
             snapshot = .empty
+        }
+    }
+
+    /// Set when the on-disk ledger could not be decoded and was preserved under a
+    /// new name instead of being overwritten.
+    private(set) var quarantinedLedgerURL: URL?
+
+    private static func quarantine(_ url: URL) -> URL? {
+        let stamp = ISO8601DateFormatter().string(from: .now).replacingOccurrences(of: ":", with: "-")
+        let destination = url.deletingLastPathComponent()
+            .appendingPathComponent("ledger-unreadable-\(stamp).json")
+        do {
+            try FileManager.default.moveItem(at: url, to: destination)
+            return destination
+        } catch {
+            return nil
         }
     }
 
@@ -72,15 +96,23 @@ actor CompanionStore {
     }
 
     func setCursor(_ cursor: ReconciliationCursor) throws { snapshot.cursor = cursor; try persist() }
-    func setState(_ state: ListenState, for id: String, submittedAt: Date? = nil) throws {
+    func setState(_ state: ListenState, for id: String, submittedAt: Date? = nil, failureReason: String? = nil) throws {
         guard let index = snapshot.listens.firstIndex(where: { $0.id == id }) else { return }
-        snapshot.listens[index].state = state; snapshot.listens[index].submittedAt = submittedAt; try persist()
+        snapshot.listens[index].state = state; snapshot.listens[index].submittedAt = submittedAt
+        snapshot.listens[index].failureReason = failureReason
+        try persist()
     }
     func correct(id: String, title: String, artist: String, album: String?) throws {
         guard let index = snapshot.listens.firstIndex(where: { $0.id == id }) else { return }
         snapshot.listens[index].canonicalMetadata.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         snapshot.listens[index].canonicalMetadata.artist = artist.trimmingCharacters(in: .whitespacesAndNewlines)
         snapshot.listens[index].canonicalMetadata.album = album?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A permanent rejection is about the metadata Last.fm saw. Correcting it
+        // produces a different submission, so the play earns another attempt.
+        if snapshot.listens[index].state == .failed, snapshot.listens[index].failureReason != nil {
+            snapshot.listens[index].state = .queued
+            snapshot.listens[index].failureReason = nil
+        }
         try persist()
     }
     func setPrivateMode(_ enabled: Bool, effectiveAt: Date = .now) throws {

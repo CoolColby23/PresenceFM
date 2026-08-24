@@ -1185,6 +1185,24 @@ struct PersistenceAndQueueTests {
         #expect(record.lastError == nil)
     }
 
+    @Test func queueReportsRejectedAdmissionWithoutPersistingThePlay() throws {
+        let limits = PersistenceStore.QueueLimits(
+            pendingWarning: 1,
+            pendingLimit: 1,
+            permanentWarning: 1,
+            permanentLimit: 1
+        )
+        let store = try PersistenceStore(inMemory: true, queueLimits: limits)
+        let queue = ScrobbleQueue(store: store, client: FailingSubmitter(error: .transport("Offline")))
+        #expect(queue.enqueue(distinctSession(title: "First", minutesAfterEpoch: 10)) == .warning(
+            "The offline scrobble queue is approaching its 5,000-item limit."
+        ))
+        #expect(queue.enqueue(distinctSession(title: "Rejected", minutesAfterEpoch: 11)) == .rejected(
+            "Scrobble queue is full. Reconnect Last.fm or remove queued items before new listens can be queued."
+        ))
+        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == 1)
+    }
+
     /// Distinct plays: `session()` reuses one track and start time, so every
     /// call collapses onto the same duplicate key.
     private func distinctSession(title: String, minutesAfterEpoch: Int) -> PlaybackSession {

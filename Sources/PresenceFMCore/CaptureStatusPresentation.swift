@@ -132,11 +132,24 @@ public struct CaptureStatusPresentation: Codable, Hashable, Sendable, Identifiab
 
     /// One spoken string for assistive technology, so a card built from several
     /// `Text` views does not have to be read out piecewise.
+    ///
+    /// Parts are joined with a single sentence separator. Explanations are
+    /// written as full sentences and already end in a period, so joining
+    /// naively would produce "eligible.. 25 percent", which VoiceOver reads
+    /// with a stumble.
     public var accessibilitySummary: String {
         var parts = [status.title, headline, explanation]
         if let progress {
             parts.append("\(Int((progress * 100).rounded())) percent toward eligibility")
         }
-        return parts.joined(separator: ". ")
+        return parts
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .map { part in
+                var trimmed = part
+                while trimmed.hasSuffix(".") { trimmed.removeLast() }
+                return trimmed.isEmpty ? part : trimmed
+            }
+            .joined(separator: ". ")
     }
 }

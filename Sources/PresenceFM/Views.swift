@@ -1143,7 +1143,11 @@ private struct QueueRow<Actions: View>: View {
     }
 
     private var timingDetail: String {
-        if record.state == .retrying, record.nextAttemptAt > .now {
+        // Key on the scheduled attempt, not the state. A retryable failure leaves
+        // the record `.pending` with a future `nextAttemptAt`; `.retrying` only
+        // marks a submission in flight, so keying on it hid the next attempt for
+        // exactly the backed-off rows the summary header counts.
+        if record.state != .permanentlyFailed, record.nextAttemptAt > .now {
             return "Retry \(record.nextAttemptAt.formatted(date: .omitted, time: .shortened))"
         }
         return record.startedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())

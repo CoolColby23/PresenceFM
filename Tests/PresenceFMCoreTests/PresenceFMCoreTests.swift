@@ -138,10 +138,13 @@ struct PresenceFMCoreTests {
             explanation: "Keep playing for 1:20 to make this track eligible.",
             progress: 0.25
         )
+        // One separator between sentences: the explanation already ends in a
+        // period, and doubling it makes VoiceOver stumble.
         #expect(progressing.accessibilitySummary == """
             In progress. Listening toward a scrobble. Keep playing for 1:20 to \
-            make this track eligible.. 25 percent toward eligibility
+            make this track eligible. 25 percent toward eligibility
             """)
+        #expect(!progressing.accessibilitySummary.contains(".."))
 
         let withoutProgress = CaptureStatusPresentation(
             status: .submitted,
@@ -149,6 +152,15 @@ struct PresenceFMCoreTests {
             explanation: "This play was accepted by Last.fm."
         )
         #expect(!withoutProgress.accessibilitySummary.contains("percent"))
+        #expect(withoutProgress.accessibilitySummary.hasSuffix("accepted by Last.fm"))
+
+        // No status is left without copy, and none doubles its punctuation.
+        for status in CaptureStatusPresentation.Status.allCases {
+            let summary = CaptureStatusPresentation(
+                status: status, headline: status.title, explanation: "Something happened."
+            ).accessibilitySummary
+            #expect(!summary.contains(".."), "\(status) doubles its sentence separator")
+        }
     }
 
     private func evidence(start: Date, played: TimeInterval) -> PlaybackEvidence {

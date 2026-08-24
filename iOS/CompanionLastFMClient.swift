@@ -5,14 +5,19 @@ import UIKit
 
 enum CompanionLastFMError: LocalizedError {
     case configuration, unauthorized, invalidResponse, api(String)
+    /// Last.fm refused this play for a reason that cannot change on a retry.
+    case rejected(String)
     var errorDescription: String? {
         switch self {
         case .configuration: "Enter your Last.fm API credentials in PresenceFM."
         case .unauthorized: "Connect Last.fm in Settings."
         case .invalidResponse: "Last.fm returned an invalid response."
-        case .api(let message): message
+        case .api(let message), .rejected(let message): message
         }
     }
+
+    /// True when resubmitting the same play cannot succeed.
+    var isTerminal: Bool { if case .rejected = self { true } else { false } }
 }
 
 struct CompanionLastFMTrack: Identifiable, Hashable, Sendable {
@@ -164,7 +169,14 @@ actor CompanionLastFMClient {
             case "5": "The Last.fm daily scrobble limit was reached."
             default: "Last.fm did not accept the scrobble."
             }
-            throw CompanionLastFMError.api(reason?.isEmpty == false ? reason! : fallback)
+            let message = reason?.isEmpty == false ? reason! : fallback
+            // Codes 1-3 describe this play itself: a filtered artist or track, or
+            // a timestamp already outside Last.fm's accepted window. Resubmitting
+            // is guaranteed to fail again. Code 4 (timestamp in the future) and
+            // code 5 (daily limit) both clear with time, so they stay retryable.
+            throw ["1", "2", "3"].contains(code)
+                ? CompanionLastFMError.rejected(message)
+                : CompanionLastFMError.api(message)
         }
     }
 
