@@ -118,11 +118,15 @@ private struct SidebarNavigationRow: View {
     let section: DashboardSection
     let selected: Bool
     @Environment(\.appTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Label(section.title, systemImage: section.symbol)
             .font(.callout.weight(.semibold))
-            .foregroundStyle(selected ? theme.onPrimaryColor : .primary)
+            // The row background is a translucent tint rather than a solid fill,
+            // so the selected label needs a contrast-checked accent instead of
+            // `onPrimaryColor`, which assumes an opaque primary background.
+            .foregroundStyle(selected ? theme.readablePrimary(for: colorScheme) : .primary)
             .padding(.vertical, 4)
             .listRowBackground(
                 RoundedRectangle(cornerRadius: BrandRadius.md, style: .continuous)
@@ -813,11 +817,33 @@ struct RecentActivityView: View {
     }
 }
 
+/// Which pending plays the queue is showing. `.blocked` is the one that matters
+/// during recovery: those are the plays that will never move without a person.
+enum QueueFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case waiting = "Waiting"
+    case blocked = "Needs Attention"
+
+    var id: String { rawValue }
+
+    func includes(_ record: ScrobbleRecord) -> Bool {
+        switch self {
+        case .all: record.state != .submitted
+        case .waiting: record.state == .pending || record.state == .retrying
+        case .blocked: record.state == .permanentlyFailed
+        }
+    }
+}
+
 struct QueueView: View {
     @Environment(AppModel.self) private var model
     @Query(sort: \ScrobbleRecord.startedAt, order: .reverse) private var records: [ScrobbleRecord]
     @State private var pendingRemoval: QueueRemoval?
     @State private var correction: QueueCorrection?
+    @State private var filter: QueueFilter = .all
+    @State private var searchText = ""
+    @State private var confirmingRetryAll = false
+    @State private var confirmingRemoveBlocked = false
     var body: some View {
         VStack(spacing: 0) {
             if let commonError {
@@ -829,47 +855,79 @@ struct QueueView: View {
                 Divider()
             }
             List {
-                ForEach(queuedRecords) { record in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(record.title).font(.headline).lineLimit(1)
-                            Text(record.artist).foregroundStyle(.secondary).lineLimit(1)
-                            if let error = record.lastError, error != commonError {
-                                Text(error).font(.caption).foregroundStyle(BrandColors.error).lineLimit(2)
-                            }
-                        }
-                        Spacer()
-                        Text(record.stateRaw.queueDisplayName).foregroundStyle(.secondary)
-                        Menu("Actions", systemImage: "ellipsis.circle") {
-                            if record.state == .permanentlyFailed {
-                                Button("Edit and Retry…") { requestCorrection(of: record) }
-                                Button("Retry Without Changes") { model.retryScrobble(id: record.id) }
-                            }
-                            Button("Remove…", role: .destructive) { requestRemoval(of: record) }
-                        }
-                        .menuIndicator(.hidden)
-                        .accessibilityLabel("Actions for \(record.title)")
+                if !visibleRecords.isEmpty {
+                    QueueSummaryHeader(
+                        records: queuedRecords,
+                        blockedCount: blockedCount,
+                        nextAttemptAt: nextAttemptAt,
+                        showBlocked: blockedCount > 0 && filter != .blocked
+                    ) {
+                        filter = .blocked
                     }
-                    .contextMenu {
-                        if record.state == .permanentlyFailed {
-                            Button("Edit and Retry…") { requestCorrection(of: record) }
-                            Button("Retry Without Changes") { model.retryScrobble(id: record.id) }
-                        }
-                        Button("Remove…", role: .destructive) { requestRemoval(of: record) }
+                    .listRowSeparator(.hidden)
+                }
+                ForEach(visibleRecords) { record in
+                    QueueRow(record: record, showsInlineError: record.lastError != commonError) {
+                        queueActions(for: record)
                     }
+                    .listRowSeparator(.visible)
+                    .contextMenu { queueActions(for: record) }
                 }
             }
+            .listStyle(.inset)
+            .scrollContentBackground(.hidden)
             .accessibilityIdentifier("queue.list")
+            // Scoped to the list so a recovery banner above it stays readable
+            // while the current filter or search matches nothing.
+            .overlay { emptyState }
         }
         .navigationTitle("Pending Plays")
-        .overlay {
-            if queuedRecords.isEmpty {
-                ContentUnavailableView {
-                    Label("Everything Is Synced", systemImage: "checkmark.circle")
-                } description: {
-                    Text("If Last.fm is unavailable, finished plays wait here and retry automatically.")
+        .searchable(text: $searchText, prompt: "Search title, artist, or album")
+        .toolbar {
+            ToolbarItemGroup {
+                Picker("Show", selection: $filter) {
+                    ForEach(QueueFilter.allCases) { option in
+                        Text(option.rawValue).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
+                .disabled(queuedRecords.isEmpty)
+                Menu("More", systemImage: "ellipsis.circle") {
+                    Button("Retry All Now", systemImage: "arrow.clockwise") { confirmingRetryAll = true }
+                        .disabled(queuedRecords.isEmpty)
+                    Divider()
+                    Button("Remove All That Need Attention…", systemImage: "trash", role: .destructive) {
+                        confirmingRemoveBlocked = true
+                    }
+                    .disabled(blockedCount == 0)
                 }
             }
+        }
+        .confirmationDialog(
+            "Retry every pending play now?",
+            isPresented: $confirmingRetryAll,
+            titleVisibility: .visible
+        ) {
+            Button("Retry \(queuedRecords.count) \(queuedRecords.count == 1 ? "Play" : "Plays")") {
+                model.retryAllScrobbles()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This clears each play's backoff and error, including plays that previously stopped retrying.")
+        }
+        .confirmationDialog(
+            "Remove every play that needs attention?",
+            isPresented: $confirmingRemoveBlocked,
+            titleVisibility: .visible
+        ) {
+            Button("Remove \(blockedCount) \(blockedCount == 1 ? "Play" : "Plays")", role: .destructive) {
+                model.removeBlockedScrobbles()
+                if filter == .blocked { filter = .all }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("PresenceFM stops trying to scrobble them. Plays that are still retrying are kept.")
         }
         .confirmationDialog(
             "Remove this pending play?",
@@ -904,6 +962,65 @@ struct QueueView: View {
 
     private var queuedRecords: [ScrobbleRecord] { records.filter { $0.state != .submitted } }
 
+    @ViewBuilder
+    private var emptyState: some View {
+        if queuedRecords.isEmpty {
+            ContentUnavailableView {
+                Label("Everything Is Synced", systemImage: "checkmark.circle")
+            } description: {
+                Text("If Last.fm is unavailable, finished plays wait here and retry automatically.")
+            }
+        } else if visibleRecords.isEmpty {
+            ContentUnavailableView {
+                Label("No Matching Plays", systemImage: "line.3.horizontal.decrease.circle")
+            } description: {
+                Text(
+                    searchText.isEmpty
+                        ? "None of the \(queuedRecords.count) pending plays are in “\(filter.rawValue)”."
+                        : "No pending plays match “\(searchText)”."
+                )
+            } actions: {
+                Button("Show All Pending Plays") {
+                    filter = .all
+                    searchText = ""
+                }
+            }
+        }
+    }
+
+    private var visibleRecords: [ScrobbleRecord] {
+        let matchingFilter = records.filter(filter.includes)
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return matchingFilter }
+        return matchingFilter.filter { record in
+            [record.title, record.artist, record.album ?? ""].contains {
+                $0.localizedCaseInsensitiveContains(query)
+            }
+        }
+    }
+
+    private var blockedCount: Int {
+        queuedRecords.count { $0.state == .permanentlyFailed }
+    }
+
+    /// The soonest automatic retry, so the summary can say when the queue moves
+    /// on its own rather than implying the person has to do something.
+    private var nextAttemptAt: Date? {
+        queuedRecords
+            .filter { $0.state == .pending || $0.state == .retrying }
+            .map(\.nextAttemptAt)
+            .min()
+    }
+
+    @ViewBuilder
+    private func queueActions(for record: ScrobbleRecord) -> some View {
+        if record.state == .permanentlyFailed {
+            Button("Edit and Retry…", systemImage: "pencil") { requestCorrection(of: record) }
+            Button("Retry Without Changes", systemImage: "arrow.clockwise") { model.retryScrobble(id: record.id) }
+        }
+        Button("Remove…", systemImage: "trash", role: .destructive) { requestRemoval(of: record) }
+    }
+
     private var commonError: String? {
         let errors = queuedRecords.compactMap(\.lastError)
         guard let first = errors.first, errors.count == queuedRecords.count, errors.allSatisfy({ $0 == first }) else { return nil }
@@ -927,6 +1044,132 @@ struct QueueView: View {
 private struct QueueRemoval: Identifiable {
     let id: UUID
     let title: String
+}
+
+private struct QueueSummaryHeader: View {
+    let records: [ScrobbleRecord]
+    let blockedCount: Int
+    let nextAttemptAt: Date?
+    let showBlocked: Bool
+    let revealBlocked: () -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(records.count) \(records.count == 1 ? "play is" : "plays are") waiting for Last.fm")
+                    .font(BrandTypography.cardTitle)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 0)
+            if showBlocked {
+                Button("Show \(blockedCount)", action: revealBlocked)
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Show the \(blockedCount) plays that need attention")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 6)
+    }
+
+    private var detail: String {
+        guard blockedCount == 0 else {
+            return "\(blockedCount) need\(blockedCount == 1 ? "s" : "") a correction before "
+                + "\(blockedCount == 1 ? "it" : "they") can be submitted."
+        }
+        guard let nextAttemptAt, nextAttemptAt > .now else {
+            return "PresenceFM keeps retrying these in the background."
+        }
+        let time = nextAttemptAt.formatted(date: .omitted, time: .shortened)
+        return "PresenceFM retries in the background. Next attempt around \(time)."
+    }
+}
+
+private struct QueueRow<Actions: View>: View {
+    let record: ScrobbleRecord
+    let showsInlineError: Bool
+    @ViewBuilder let actions: () -> Actions
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 32, height: 32)
+                .background(tint.opacity(0.12), in: .rect(cornerRadius: 9))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(record.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(record.album.map { "\(record.artist) • \($0)" } ?? record.artist)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if showsInlineError, let error = record.lastError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(BrandColors.error)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 6) {
+                Text(record.stateRaw.queueDisplayName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(tint.opacity(0.11), in: .capsule)
+                Text(timingDetail)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 124, alignment: .trailing)
+            Menu("Actions", systemImage: "ellipsis.circle", content: actions)
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .labelStyle(.iconOnly)
+                .fixedSize()
+                .accessibilityLabel("Actions for \(record.title)")
+        }
+        .padding(.vertical, 8)
+        .contentShape(.rect)
+    }
+
+    private var timingDetail: String {
+        // Key on the scheduled attempt, not the state. A retryable failure leaves
+        // the record `.pending` with a future `nextAttemptAt`; `.retrying` only
+        // marks a submission in flight, so keying on it hid the next attempt for
+        // exactly the backed-off rows the summary header counts.
+        if record.state != .permanentlyFailed, record.nextAttemptAt > .now {
+            return "Retry \(record.nextAttemptAt.formatted(date: .omitted, time: .shortened))"
+        }
+        return record.startedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+
+    private var symbol: String {
+        switch record.state {
+        case .pending: "clock"
+        case .retrying: "arrow.clockwise"
+        case .permanentlyFailed: "exclamationmark.triangle.fill"
+        case .submitted: "checkmark.circle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch record.state {
+        case .pending: theme.primaryColor
+        case .retrying: BrandColors.warning
+        case .permanentlyFailed: BrandColors.error
+        case .submitted: BrandColors.success
+        }
+    }
 }
 
 private struct QueueRecoveryBanner: View {

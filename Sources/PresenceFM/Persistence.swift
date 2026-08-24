@@ -331,6 +331,41 @@ final class PersistenceStore {
         save()
     }
 
+    /// Rearms every unsubmitted play at once. A single Last.fm outage can strand
+    /// hundreds of plays for the same reason, and clearing that one record at a
+    /// time is the kind of work a person should never have to do by hand.
+    /// Returns how many records were rearmed.
+    @discardableResult
+    func retryAllScrobbles(now: Date = .now) -> Int {
+        let submittedRaw = QueueState.submitted.rawValue
+        let descriptor = FetchDescriptor<ScrobbleRecord>(
+            predicate: #Predicate { $0.stateRaw != submittedRaw }
+        )
+        guard let records = try? context.fetch(descriptor), !records.isEmpty else { return 0 }
+        for record in records {
+            record.state = .pending
+            record.attempts = 0
+            record.nextAttemptAt = now
+            record.lastError = nil
+        }
+        save()
+        return records.count
+    }
+
+    /// Discards every play in one queue state, used to clear a block of listens
+    /// that Last.fm will never accept. Returns how many records were removed.
+    @discardableResult
+    func removeScrobbles(in state: QueueState) -> Int {
+        let stateRaw = state.rawValue
+        let descriptor = FetchDescriptor<ScrobbleRecord>(
+            predicate: #Predicate { $0.stateRaw == stateRaw }
+        )
+        guard let records = try? context.fetch(descriptor), !records.isEmpty else { return 0 }
+        records.forEach(context.delete)
+        save()
+        return records.count
+    }
+
     @discardableResult
     func correctScrobble(
         id: UUID,

@@ -10,6 +10,9 @@ final class ScrobbleQueue {
     private var isProcessing = false
     var onStuck: ((String) -> Void)?
     var onCapacity: ((String) -> Void)?
+    /// Reports the duplicate key of a record Last.fm accepted, so the model can
+    /// move the matching recent session to its submitted state.
+    var onSubmitted: ((String) -> Void)?
 
     init(store: PersistenceStore, client: any ScrobbleSubmitting, clock: any AppClock = SystemAppClock()) {
         self.store = store
@@ -21,12 +24,18 @@ final class ScrobbleQueue {
         self.init(store: store, client: client, clock: ClosureAppClock(now: now))
     }
 
-    func enqueue(_ session: PlaybackSession) {
-        switch store.enqueue(session, now: clock.now) {
+    @discardableResult
+    func enqueue(_ session: PlaybackSession) -> QueueAdmission {
+        let admission = store.enqueue(session, now: clock.now)
+        switch admission {
         case .accepted: Task { await process() }
-        case .warning(let message), .rejected(let message): onCapacity?(message)
+        case .warning(let message):
+            onCapacity?(message)
+            Task { await process() }
+        case .rejected(let message): onCapacity?(message)
         case .duplicate: break
         }
+        return admission
     }
 
     func start() {
@@ -43,6 +52,17 @@ final class ScrobbleQueue {
 
     func retry(id: UUID) { if store.retryScrobble(id: id, now: clock.now) { Task { await process() } } }
     func remove(id: UUID) { store.removeScrobble(id: id) }
+
+    @discardableResult
+    func retryAll() -> Int {
+        let count = store.retryAllScrobbles(now: clock.now)
+        if count > 0 { Task { await process() } }
+        return count
+    }
+
+    @discardableResult
+    func removeAll(in state: QueueState) -> Int { store.removeScrobbles(in: state) }
+
     func correct(id: UUID, title: String, artist: String, album: String?) -> Bool {
         guard store.correctScrobble(
             id: id,
@@ -80,6 +100,7 @@ final class ScrobbleQueue {
                                            duration: record.duration, startedAt: record.startedAt)
                 record.state = .submitted
                 record.lastError = nil
+                onSubmitted?(record.duplicateKey)
             } catch let error as LastFMError {
                 record.attempts += 1; record.lastError = error.localizedDescription
                 if case .rejected = error { record.state = .permanentlyFailed }

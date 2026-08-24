@@ -22,6 +22,17 @@ public enum ListenState: String, Codable, Sendable { case listening, review, que
 public enum ReviewReason: String, Codable, Sendable {
     case missingTimestamp, missingDuration, insufficientPlayTime, ambiguousDuplicate, conflictingMetadata, beforeBaseline
     case historicalImport
+    /// A reason written by a build newer than this one.
+    case unrecognized
+
+    /// Synthesized decoding throws on an unknown raw value, and `CompanionStore`
+    /// treats any decode failure as an empty ledger. A reason this build has not
+    /// heard of must therefore degrade to `unrecognized` rather than discard the
+    /// person's entire listen history.
+    public init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ReviewReason(rawValue: raw) ?? .unrecognized
+    }
 }
 
 public struct ScrobbleMetadata: Codable, Hashable, Sendable {
@@ -67,6 +78,10 @@ public struct CanonicalListen: Identifiable, Codable, Hashable, Sendable {
     public var state: ListenState
     public var reviewReason: ReviewReason?
     public var submittedAt: Date?
+    /// Why Last.fm refused this listen for good. Present only when the refusal
+    /// cannot succeed on a retry, so the UI can stop promising one. Optional and
+    /// additive, so older and newer ledgers decode each other.
+    public var failureReason: String?
 
     public init(id: String, evidence: [PlaybackEvidence], metadata: ScrobbleMetadata, state: ListenState, reviewReason: ReviewReason? = nil) {
         self.id = id; self.evidence = evidence; canonicalMetadata = metadata

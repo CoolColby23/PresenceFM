@@ -30,9 +30,24 @@ Record observed, reconciled, uncertain, missed, and duplicate counts for foregro
 
 The iPhone home screen now reports detecting, progressing, queued, submitted,
 excluded, private, and needs-attention states through the same presentation
-contract used by the Mac app. Validate that every blocking state offers one
-working recovery action and that locked, suspended, and force-quit scenarios are
-described as iOS runtime limitations rather than continuous background capture.
+contract used by the Mac app. Titles, symbols, tone, and recovery button copy
+come from `CaptureStatusPresentation` in `PresenceFMCore`; see
+[STATUS-COPY.md](STATUS-COPY.md) for the vocabulary and the rule against
+restating it in either app's view layer. Validate that every blocking state
+offers one working recovery action and that locked, suspended, and force-quit
+scenarios are described as iOS runtime limitations rather than continuous
+background capture.
+
+Two recovery paths need device validation specifically. **Check Again**
+re-scans recently played music in place and must not be confused with opening
+Settings. When Apple Music access has been denied rather than merely
+un-granted, the card must offer **Open Settings** instead, because
+`MusicAuthorization.request()` resolves to denied without prompting again.
+
+The scrobble list is searchable by title, artist, and album. Search filters
+only the history already paged in from Last.fm, so the no-match state tells the
+user to pull to refresh for more; confirm the match count in the section header
+reflects that.
 
 Historical reconciliation is user-confirmed. PresenceFM follows every page
 available from MusicKit's recently-played songs response and places new

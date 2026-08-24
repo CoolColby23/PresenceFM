@@ -4,6 +4,10 @@ import MusicKit
 import PresenceFMCore
 
 actor AppleMusicEvidenceSource: PlaybackEvidenceSource {
+    /// Bounds a history scan so a long or unexpectedly repeating page sequence
+    /// cannot keep the import spinning against the network.
+    private static let maximumHistoryPages = 20
+
     private let player = MPMusicPlayerController.systemMusicPlayer
     private let deviceID: UUID
     private var lastItemID: String?
@@ -41,14 +45,19 @@ actor AppleMusicEvidenceSource: PlaybackEvidenceSource {
     func reconcile(since cursor: ReconciliationCursor) async throws -> ReconciliationResult {
         var request = MusicRecentlyPlayedRequest<Song>(); request.limit = 50
         let response = try await request.response()
-        var items = response.items
-        while items.hasNextBatch {
-            let previousCount = items.count
-            guard let next = try await items.nextBatch(limit: 50), !next.isEmpty else { break }
-            items += next
-            guard items.count > previousCount else { break }
+        // Paginate from the most recent batch, never from the accumulated
+        // results: the paging token belongs to the batch MusicKit returned, and
+        // a locally concatenated collection carries no reliable cursor.
+        var batch = response.items
+        var songs = Array(batch)
+        var pagesFetched = 1
+        while batch.hasNextBatch, pagesFetched < Self.maximumHistoryPages {
+            guard let next = try await batch.nextBatch(limit: 50), !next.isEmpty else { break }
+            songs += next
+            batch = next
+            pagesFetched += 1
         }
-        let evidence = items.compactMap { song -> PlaybackEvidence? in
+        let evidence = songs.compactMap { song -> PlaybackEvidence? in
             guard let played = song.lastPlayedDate, played > cursor.lastCheckedAt else { return nil }
             return PlaybackEvidence(
                 deviceID: deviceID, sourceTrackID: song.id.rawValue,

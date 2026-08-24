@@ -8,7 +8,7 @@ PresenceFM is a native macOS menu-bar app that reads current playback from Apple
 ## Download
 
 - [Download the latest stable release](https://github.com/CoolColby23/PresenceFM/releases/latest)
-- [Try the v1.1.0-beta.2 pre-release](https://github.com/CoolColby23/PresenceFM/releases/tag/v1.1.0-beta.2)
+- [Browse pre-releases](https://github.com/CoolColby23/PresenceFM/releases) for opt-in beta and RC builds.
 - Visit [presence-fm.vercel.app](https://presence-fm.vercel.app/) for the feature overview.
 
 Releases currently use ad-hoc signing. Follow the first-launch instructions under [Install](#install) after dragging PresenceFM to Applications.

@@ -1,7 +1,15 @@
 # Changelog
 
-## Next
+## 1.3.0 - Unreleased
 
+- Add filtering, search, and bulk recovery to the Mac pending-plays queue: switch between all, automatically retrying, and blocked plays; search queued title, artist, and album; retry every pending play at once after an outage; and remove blocked plays in one step without touching plays that are still retrying.
+- Tell people when the Mac queue will next retry on its own, and offer a direct jump to the plays that need a correction.
+- Move scrobble-capture titles, symbols, tone, and recovery button copy into `PresenceFMCore` so the Mac and iPhone apps describe identical situations identically, replacing per-app tables that had already drifted.
+- Give the iPhone scrobble history a search field with a match count, and a distinct no-match state that explains more history can be pulled in.
+- Separate "re-scan recently played music" from "open Settings" as capture recovery actions, and send denied Apple Music access to iOS Settings instead of a prompt iOS will not show again.
+- Read scrobble status cards as one VoiceOver statement instead of four fragments, and keep recent-activity rows attached to the play they describe rather than to their position in the list.
+
+- Refresh both apps' layout: give the Mac pending-plays queue a summary header and per-play state, artist, timing, and action structure; fix sidebar and settings selection contrast so selected labels stay legible in every theme; and rebuild the iPhone onboarding, scrobble list, past-play picker, and settings on a shared card, spacing, and status-pill system that matches the Mac design tokens.
 - Import every page of recently played songs exposed by MusicKit into an iPhone review inbox, with individual selection, Select All, and explicit submission to Last.fm while retaining duplicate protection.
 - Add a shared scrobble-confidence model across Mac and iPhone, with live eligibility progress, plain-language queued/submitted/excluded states, a single recovery action, and recent capture explanations.
 - End iPhone onboarding with a live readiness check and explain that normal iOS background suspension can delay observation without presenting it as an app failure.

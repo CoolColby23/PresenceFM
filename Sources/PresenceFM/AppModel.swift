@@ -135,6 +135,9 @@ final class AppModel {
                 )
             }
         }
+        queue.onSubmitted = { [weak self] duplicateKey in
+            Task { @MainActor in self?.markSessionSubmitted(duplicateKey: duplicateKey) }
+        }
         queue.onCapacity = { [weak self] message in
             Task { @MainActor in
                 self?.persistenceIssue = message
@@ -413,10 +416,22 @@ final class AppModel {
 
     private func finalize(_ session: PlaybackSession, artworkData: Data?) {
         let wasApprovedAtEligibility = pendingScrobbleSessionIDs.remove(session.id) != nil
+        var session = session
         if session.outcome == .played, wasApprovedAtEligibility,
             preferences.lastFMEnabled, allowsExternalPublishing
         {
-            queue.enqueue(session)
+            let admission = queue.enqueue(session)
+            switch admission {
+            case .accepted, .warning:
+                // Distinguish a play that entered the scrobble queue from one
+                // that stayed local. A rejected admission must remain `.played`
+                // because there is no durable record available to retry.
+                // `outcomeLabel` folds `.queued` back into "Played", so
+                // listening history is unaffected.
+                session.outcome = .queued
+            case .duplicate, .rejected:
+                break
+            }
         }
         activeSession = nil
         let isDemoSession = DemoPlaybackSequence.contains(
@@ -426,6 +441,15 @@ final class AppModel {
         recentSessions.insert(session, at: 0)
         if recentSessions.count > 200 { recentSessions.removeLast() }
         store.record(session, artworkData: artworkData)
+    }
+
+    /// Promotes the recent session matching a submitted queue record. Submission
+    /// happens against `ScrobbleRecord`, so without this the in-memory session
+    /// never leaves `.queued` and the submitted state is unreachable.
+    private func markSessionSubmitted(duplicateKey: String) {
+        guard let index = recentSessions.firstIndex(where: { $0.duplicateKey == duplicateKey })
+        else { return }
+        recentSessions[index].outcome = .submitted
     }
 
     private func updateDiscord() async {
@@ -464,6 +488,19 @@ final class AppModel {
 
     func retryScrobble(id: UUID) { notifications.reset("queue-stuck"); queue.retry(id: id) }
     func removeScrobble(id: UUID) { queue.remove(id: id) }
+
+    @discardableResult
+    func retryAllScrobbles() -> Int {
+        notifications.reset("queue-stuck")
+        return queue.retryAll()
+    }
+
+    @discardableResult
+    func removeBlockedScrobbles() -> Int {
+        notifications.reset("queue-stuck")
+        return queue.removeAll(in: .permanentlyFailed)
+    }
+
     func correctScrobble(id: UUID, title: String, artist: String, album: String?) -> Bool {
         notifications.reset("queue-stuck")
         return queue.correct(id: id, title: title, artist: artist, album: album)
@@ -843,8 +880,10 @@ final class AppModel {
             switch session.outcome {
             case .submitted:
                 CaptureStatusPresentation(status: .submitted, headline: session.track.title, explanation: "Submitted to Last.fm", timestamp: session.startedAt)
-            case .queued, .failed, .played:
+            case .queued, .failed:
                 CaptureStatusPresentation(status: .queued, headline: session.track.title, explanation: "Saved locally for retry", timestamp: session.startedAt, recoveryAction: .retryQueue)
+            case .played:
+                CaptureStatusPresentation(status: .excluded, headline: session.track.title, explanation: "Played, but not sent to Last.fm", timestamp: session.startedAt)
             case .skipped, .interrupted:
                 CaptureStatusPresentation(status: .excluded, headline: session.track.title, explanation: "Not enough listening time to scrobble", timestamp: session.startedAt)
             case .active, .listened:
@@ -861,6 +900,11 @@ final class AppModel {
             openSettings(.integrations)
         case .retryQueue:
             navigate(to: .queue)
+        case .recheckNow:
+            // The Mac observes playback continuously, so the equivalent of the
+            // iPhone's re-scan is refreshing the integrations it depends on.
+            refreshDiscord()
+            Task { await refreshLastFMRemoteHistory(force: true) }
         case .disablePrivateMode:
             endPrivateMode()
         }

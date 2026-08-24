@@ -80,34 +80,39 @@ struct NowPlayingOverviewView: View {
     }
 
     private var activityCard: some View {
-        NowPlayingInfoCard(title: "Recent scrobble activity", symbol: "clock.arrow.circlepath") {
-            if model.recentCaptureActivity.isEmpty {
+        // Read once: the model derives this list on every access.
+        let activity = model.recentCaptureActivity
+        return NowPlayingInfoCard(title: "Recent scrobble activity", symbol: "clock.arrow.circlepath") {
+            if activity.isEmpty {
                 Text("Completed and interrupted plays will be explained here.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(Array(model.recentCaptureActivity.enumerated()), id: \.offset) { index, activity in
+                ForEach(Array(activity.enumerated()), id: \.element.id) { index, entry in
                     if index > 0 { Divider() }
                     HStack(spacing: 9) {
-                        Circle()
-                            .fill(activity.status.tint)
-                            .frame(width: 7, height: 7)
+                        Image(systemName: entry.status.symbol)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(entry.status.tint)
+                            .frame(width: 13)
+                            .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(activity.headline)
+                            Text(entry.headline)
                                 .font(.callout.weight(.semibold))
                                 .lineLimit(1)
-                            Text(activity.explanation)
+                            Text(entry.explanation)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if let timestamp = activity.timestamp {
+                        if let timestamp = entry.timestamp {
                             Text(timestamp, style: .relative)
-                            .font(.caption2)
+                            .font(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)
                         }
                     }
                     .accessibilityElement(children: .combine)
+                    .accessibilityLabel(entry.accessibilitySummary)
                 }
             }
         }
@@ -158,17 +163,22 @@ private struct CaptureConfidenceContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: presentation.status.symbol)
+                Label(presentation.status.title, systemImage: presentation.status.symbol)
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(presentation.status.tint)
-                Text(presentation.headline)
-                    .font(.callout.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(presentation.status.tint.opacity(0.12), in: .capsule)
                 Spacer()
                 if let timestamp = presentation.timestamp {
                     Text(timestamp, style: .relative)
-                        .font(.caption2)
+                        .font(.caption2.monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }
             }
+            Text(presentation.headline)
+                .font(.callout.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
             Text(presentation.explanation)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -183,42 +193,31 @@ private struct CaptureConfidenceContent: View {
                     .buttonStyle(.borderless)
             }
         }
+        // The status, headline, explanation, and progress are one statement, so
+        // VoiceOver reads them as one stop instead of four fragments. The
+        // recovery button stays separately focusable.
         .accessibilityElement(children: .contain)
+        .accessibilityRepresentation {
+            VStack {
+                Text(presentation.accessibilitySummary)
+                if let action = presentation.recoveryAction {
+                    Button(action.buttonTitle, action: recovery)
+                }
+            }
+        }
     }
 }
 
+// Titles, symbols, and tone come from `PresenceFMCore` so the Mac and iPhone
+// apps describe the same situation identically. Only the palette is local.
 private extension CaptureStatusPresentation.Status {
-    var symbol: String {
-        switch self {
-        case .detecting: "waveform.badge.magnifyingglass"
-        case .progressing: "waveform"
-        case .queued: "tray.full"
-        case .submitted: "checkmark.circle.fill"
-        case .excluded: "nosign"
-        case .privateMode: "eye.slash.fill"
-        case .needsAttention: "exclamationmark.triangle.fill"
-        }
-    }
-
     var tint: Color {
-        switch self {
-        case .submitted: BrandColors.success
-        case .progressing, .detecting: BrandColors.electricBlue
-        case .queued, .privateMode: BrandColors.warning
-        case .excluded: BrandColors.neutral
-        case .needsAttention: BrandColors.error
-        }
-    }
-}
-
-private extension CaptureStatusPresentation.RecoveryAction {
-    var buttonTitle: String {
-        switch self {
-        case .grantPlaybackPermission: "Grant Permission"
-        case .reconnectLastFM: "Reconnect Last.fm"
-        case .retryQueue: "Review Queue"
-        case .disablePrivateMode: "End Private Mode"
-        case .openSettings: "Open Settings"
+        switch tone {
+        case .positive: BrandColors.success
+        case .active: BrandColors.electricBlue
+        case .paused: BrandColors.warning
+        case .neutral: BrandColors.neutral
+        case .critical: BrandColors.error
         }
     }
 }

@@ -1185,6 +1185,107 @@ struct PersistenceAndQueueTests {
         #expect(record.lastError == nil)
     }
 
+    @Test func queueReportsRejectedAdmissionWithoutPersistingThePlay() throws {
+        let limits = PersistenceStore.QueueLimits(
+            pendingWarning: 1,
+            pendingLimit: 1,
+            permanentWarning: 1,
+            permanentLimit: 1
+        )
+        let store = try PersistenceStore(inMemory: true, queueLimits: limits)
+        let queue = ScrobbleQueue(store: store, client: FailingSubmitter(error: .transport("Offline")))
+        #expect(queue.enqueue(distinctSession(title: "First", minutesAfterEpoch: 10)) == .warning(
+            "The offline scrobble queue is approaching its 5,000-item limit."
+        ))
+        #expect(queue.enqueue(distinctSession(title: "Rejected", minutesAfterEpoch: 11)) == .rejected(
+            "Scrobble queue is full. Reconnect Last.fm or remove queued items before new listens can be queued."
+        ))
+        #expect(try store.context.fetchCount(FetchDescriptor<ScrobbleRecord>()) == 1)
+    }
+
+    /// Distinct plays: `session()` reuses one track and start time, so every
+    /// call collapses onto the same duplicate key.
+    private func distinctSession(title: String, minutesAfterEpoch: Int) -> PlaybackSession {
+        let track = TrackMetadata(
+            identity: .init(persistentID: title), title: title, artist: "Artist", album: "Album",
+            duration: 100, source: .appleMusicCatalog, appleMusicURL: nil, artworkReference: nil
+        )
+        return PlaybackSession(
+            id: UUID(), track: track,
+            startedAt: Date(timeIntervalSince1970: TimeInterval(minutesAfterEpoch * 60)),
+            accumulatedPlayTime: 50, lastPosition: 50, eligibility: .eligible, outcome: .queued
+        )
+    }
+
+    @Test func retryingEveryPlayRearmsBlockedAndBackedOffRecordsButNotSubmittedOnes() throws {
+        let store = try PersistenceStore(inMemory: true)
+        for (index, title) in ["Blocked", "BackedOff", "Waiting", "Done"].enumerated() {
+            store.enqueue(distinctSession(title: title, minutesAfterEpoch: 100 + index))
+        }
+        let records = try store.context.fetch(FetchDescriptor<ScrobbleRecord>())
+        let blocked = try #require(records.first { $0.title == "Blocked" })
+        blocked.state = .permanentlyFailed
+        blocked.attempts = 6
+        blocked.lastError = "Rejected metadata"
+        let backedOff = try #require(records.first { $0.title == "BackedOff" })
+        backedOff.state = .retrying
+        backedOff.attempts = 3
+        backedOff.nextAttemptAt = Date(timeIntervalSince1970: 90_000)
+        backedOff.lastError = "Offline"
+        let submitted = try #require(records.first { $0.title == "Done" })
+        submitted.state = .submitted
+        store.save()
+
+        let now = Date(timeIntervalSince1970: 50_000)
+        #expect(store.retryAllScrobbles(now: now) == 3)
+
+        for record in [blocked, backedOff] {
+            #expect(record.state == .pending)
+            #expect(record.attempts == 0)
+            #expect(record.lastError == nil)
+            #expect(record.nextAttemptAt == now)
+        }
+        // A submitted play must not be resurrected into the queue.
+        #expect(submitted.state == .submitted)
+    }
+
+    @Test func removingBlockedPlaysLeavesPlaysThatAreStillRetrying() throws {
+        let store = try PersistenceStore(inMemory: true)
+        for (index, title) in ["BlockedOne", "BlockedTwo", "Waiting"].enumerated() {
+            store.enqueue(distinctSession(title: title, minutesAfterEpoch: 200 + index))
+        }
+        let records = try store.context.fetch(FetchDescriptor<ScrobbleRecord>())
+        for record in records where record.title.hasPrefix("Blocked") {
+            record.state = .permanentlyFailed
+        }
+        store.save()
+
+        #expect(store.removeScrobbles(in: .permanentlyFailed) == 2)
+        let remaining = try store.context.fetch(FetchDescriptor<ScrobbleRecord>())
+        #expect(remaining.map(\.title) == ["Waiting"])
+        // Removing again is a no-op rather than an error.
+        #expect(store.removeScrobbles(in: .permanentlyFailed) == 0)
+    }
+
+    @Test func queueFilterSeparatesPlaysWaitingAutomaticallyFromPlaysNeedingAPerson() throws {
+        let store = try PersistenceStore(inMemory: true)
+        for (index, title) in ["Pending", "Retrying", "Blocked", "Submitted"].enumerated() {
+            store.enqueue(distinctSession(title: title, minutesAfterEpoch: 300 + index))
+        }
+        let records = try store.context.fetch(FetchDescriptor<ScrobbleRecord>())
+        try #require(records.first { $0.title == "Retrying" }).state = .retrying
+        try #require(records.first { $0.title == "Blocked" }).state = .permanentlyFailed
+        try #require(records.first { $0.title == "Submitted" }).state = .submitted
+        store.save()
+
+        func titles(_ filter: QueueFilter) -> [String] {
+            records.filter(filter.includes).map(\.title).sorted()
+        }
+        #expect(titles(.all) == ["Blocked", "Pending", "Retrying"])
+        #expect(titles(.waiting) == ["Pending", "Retrying"])
+        #expect(titles(.blocked) == ["Blocked"])
+    }
+
     @Test func correctionRequiresValidMetadataAndResetsARejectedScrobble() throws {
         let store = try PersistenceStore(inMemory: true)
         store.enqueue(session())
